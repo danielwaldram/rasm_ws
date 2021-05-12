@@ -1,0 +1,64 @@
+# joint_limits.yaml allows the dynamics properties specified in the URDF to be overwritten or augmented as needed
+# Specific joint properties can be changed with the keys [max_position, min_position, max_velocity, max_acceleration]
+# Joint limits can be turned off with [has_velocity_limits, has_acceleration_limits]
+joint_limits:
+  link_e_3:
+    has_position_limits: true
+    min_position: -2.0
+    max_position: 2.0
+    has_velocity_limits: true
+    max_velocity: 2.0
+    has_acceleration_limits: false
+    max_acceleration: 0
+    has_effort_limits: true
+    max_effort: 400
+    min_effort: -400
+  link_p_5:
+    has_position_limits: true
+    min_position: -2.0
+    max_position: 2.0
+    has_velocity_limits: true
+    max_velocity: 2.0
+    has_acceleration_limits: false
+    max_acceleration: 0
+    has_effort_limits: true
+    max_effort: 400
+    min_effort: -400
+  link_r_6:
+    has_position_limits: true
+    min_position: -2.0
+    max_position: 2.0
+    has_velocity_limits: true
+    max_velocity: 2.0
+    has_acceleration_limits: false
+    max_acceleration: 0
+    has_effort_limits: true
+    max_effort: 400
+    min_effort: -400
+  link_s_2:
+    has_position_limits: true
+    min_position: -3.14
+    max_position: 3.14
+    has_velocity_limits: true
+    max_velocity: 2.0
+    has_acceleration_limits: false
+    max_acceleration: 0
+    has_effort_limits: true
+    max_effort: 400
+    min_effort: -400
+  link_y_4:
+    has_position_limits: true
+    min_position: -2.0
+    max_position: 2.0
+    has_velocity_limits: true
+    max_velocity: 2.0
+    has_acceleration_limits: false
+    max_acceleration: 0
+    has_effort_limits: true
+    max_effort: 400
+    min_effort: -400
+  link_z_1:
+    has_velocity_limits: false
+    max_velocity: 0
+    has_acceleration_limits: false
+    max_acceleration: 0

@@ -1,0 +1,33 @@
+<launch>
+  <rosparam file="$(find rasm_moveit3)/config/trajectory_control.yaml" command="load"/>
+  <rosparam file = "$(find beginner_tutorials)/config/joint_limits.yaml" command="load"/>
+
+  <arg name = "model" default = "$(find rasm_urdf)/urdf/rasm_urdf.urdf"/>
+  <arg name = "gui" default = "true"/>
+
+  <param name="robot_description" command="cat $(arg model)" />
+  <param name= "use_gui" value = "$(arg gui)"/>
+
+  <node name = "rasm_hardware_interface" pkg="beginner_tutorials" type="MyRobot_hardware_inerface_node" output="screen"/>
+
+  <node name = "robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" >
+  </node>
+
+  <!-- Loading the URDF, SRDF and other .yaml cofig files on the param server -->
+  <include file="$(find rasm_moveit3)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="true"/>
+  </include>
+
+  <include file="$(find rasm_moveit3)/launch/move_group.launch">
+    <arg name="publish_monitored_planning_scene" value="true" />
+  </include>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rasm_urdf)/launch/moveit_config.rviz"/>
+
+  <node name = "controller_spawner" pkg="controller_manager" type = "spawner" respawn = "false" output = "screen"
+    args="
+    /rasm_urdf/joint_state_controller
+    /rasm_urdf/arm_joint_controller"/>
+
+
+</launch>

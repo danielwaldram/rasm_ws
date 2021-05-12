@@ -1,0 +1,29 @@
+rasm_urdf:
+  joints_update:
+    type: joint_state_controller/JointStateController
+    publish_rate: 50
+
+  Shoulder_EffortController:
+    type: effort_controllers/JointPositionController
+    joint: link_s_2
+    pid: {p: 450.0, i: 15.0, d: 225, i_clamp_min: -100.0, i_clamp_max: 100.0}
+
+  Elbow_EffortController:
+    type: effort_controllers/JointPositionController
+    joint: link_e_3
+    pid: {p: 450.0, i: 25.0, d: 100.0, i_clamp_min: -100.0, i_clamp_max: 100.0}
+
+  Yaw_EffortController:
+    type: effort_controllers/JointPositionController
+    joint: link_y_4
+    pid: {p: 400.0, i: 300.0, d: 0.0, i_clamp_min: -400.0, i_clamp_max: 400.0}
+
+  Pitch_EffortController:
+    type: effort_controllers/JointPositionController
+    joint: link_p_5
+    pid: {p: 1800.0, i: 50.0, d: 0.0, i_clamp_min: -800.0, i_clamp_max: 800.0}
+
+  Roll_EffortController:
+    type: effort_controllers/JointPositionController
+    joint: link_r_6
+    pid: {p: 700.0, i: 500.0, d: 0.0, i_clamp_min: -400.0, i_clamp_max: 400.0}

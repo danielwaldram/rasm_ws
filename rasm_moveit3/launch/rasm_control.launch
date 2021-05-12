@@ -1,0 +1,19 @@
+<launch>
+  <!-- Load joint controller configurations from YAMLL file to parameter server -->
+  <rosparam file="$(find rasm_moveit3)/config/rasm_control.yaml" command="load"/>
+
+  <!-- load the controllers -->
+
+  <node name="controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" ns="/rasm_urdf" args="height_joint_position_controller shoulder_joint_position_controller
+    elbow_joint_position_controller joint_state_controller
+    yaw_joint_position_controller pitch_joint_position_controller
+    roll_joint_position_controller --shutdown-timeout 3"/>
+
+  <!-- Convert joint states to TF transforms for rviz, etc -->
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+    respawn="false" output="screen">
+    <remap from="/joint_states" to="/rasm_urdf/joint_states" />
+  </node>
+
+</launch>

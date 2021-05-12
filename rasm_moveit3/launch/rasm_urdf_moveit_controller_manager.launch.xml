@@ -1,0 +1,11 @@
+<launch>
+  <!-- loads ros_controllers to the param server -->
+  <arg name="use_controller_manager" default="true" />
+  <param name="use_controller_manager" value="$(arg use_controller_manager)" />
+  <!-- Set the param that trajectory_execution_manager needs to find the controller plugin -->
+	<arg name="moveit_controller_manager" default="moveit_simple_controller_manager/MoveItSimpleControllerManager" />
+	<param name="moveit_controller_manager" value="$(arg moveit_controller_manager)"/>
+
+  <rosparam file="$(find rasm_moveit3)/config/controllers.yaml"/>
+
+</launch>

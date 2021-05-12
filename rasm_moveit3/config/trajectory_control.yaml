@@ -1,0 +1,20 @@
+rasm_urdf:
+  joint_state_controller:
+    type: joint_state_controller/JointStateController
+    publish_rate: 75
+  arm_joint_controller:
+    type: "effort_controllers/JointTrajectoryController"
+    joints:
+      - link_z_1
+      - link_s_2
+      - link_e_3
+      - link_y_4
+      - link_p_5
+      - link_r_6
+    gains:
+      link_z_1: {p: 1000.0, i: 0.0, d: 0.0, i_clamp_min: 0.0, i_clamp_max: 0.0}
+      link_s_2: {p: 450.0, i: 15.0, d: 225.0, i_clamp_min: -100.0, i_clamp_max: 100.0}
+      link_e_3: {p: 450.0, i: 25.0, d: 100.0, i_clamp_min: -100.0, i_clamp_max: 100.0}
+      link_y_4: {p: 450.0, i: 30.0, d: 0.0, i_clamp_min: -400.0, i_clamp_max: 400.0}
+      link_p_5: {p: 450.0, i: 50.0, d: 0.0, i_clamp_min: -400.0, i_clamp_max: 400.0}
+      link_r_6: {p: 450.0, i: 50.0, d: 0.0, i_clamp_min: -400.0, i_clamp_max: 400.0}

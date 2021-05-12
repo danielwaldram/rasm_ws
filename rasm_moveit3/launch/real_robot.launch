@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <!-- Loading the controller which indicates the two controllers under rasm_urdf which are
+  the joint_state_controller and the arm_joint_controller which is of type effort_controllers/JointTrajectoryController -->
+  <rosparam file="$(find rasm_moveit3)/config/trajectory_control.yaml" command="load"/>
+
+  <!-- Loading the joint limits which correspond to the different joints of the rasm. This is something I had to add
+    after having issues with error that joint limits were not specified for shoulder joint. I also specify the joint
+     limits later when the planning_context.launch file loads the joint_limits file saved in the rasm_moveit3 package
+      which indicates to me there may be an issue with namespaces -->
+  <rosparam file = "$(find beginner_tutorials)/config/joint_limits.yaml" command="load"/>
+
+  <!-- Loading the URDF, SRDF and other .yaml cofig files on the param server -->
+  <include file="$(find rasm_moveit3)/launch/planning_context.launch">
+    <arg name="load_robot_description" value="true"/>
+  </include>
+
+  <node name = "RASM_hardware_interface" pkg="beginner_tutorials" type="MyRobot_hardware_inerface_node" output="screen"/>
+
+  <node name="joint_controller_spawner" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" args="/rasm_urdf/joint_state_controller">
+  </node>
+
+  <node name="robot_state_publisher" pkg="robot_state_publisher" type="robot_state_publisher"
+    respawn="false" output="screen">
+    <!--<remap from="/joint_states" to="/rasm_urdf/joint_states" /> -->
+  </node>
+
+  <node name="joint_controller" pkg="controller_manager" type="spawner" respawn="false"
+    output="screen" args="
+    /rasm_urdf/arm_joint_controller"/>
+
+
+  <include file="$(find rasm_moveit3)/launch/move_group.launch">
+    <arg name="publish_monitored_planning_scene" value="true" />
+  </include>
+
+  <include file="$(find rasm_moveit3)/launch/moveit_rviz.launch"/>
+
+
+</launch>

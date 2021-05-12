@@ -1,0 +1,495 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This URDF was automatically created by SolidWorks to URDF Exporter! Originally created by Stephen Brawner (brawner@gmail.com)
+     Commit Version: 1.6.0-1-g15f4949  Build Version: 1.6.7594.29634
+     For more information, please see http://wiki.ros.org/sw_urdf_exporter -->
+<robot
+  name="rasm_urdf">
+
+  <!-- added gazebo portion based on info from
+  https://www.youtube.com/watch?v=UUwHK5ONTAQ&ab_channel=TheConstruct -->
+ <gazebo>
+    <plugin name = "gazebo_ros_control" filename= "libgazebo_ros_control.so">
+      <robotNamespace>/rasm_urdf</robotNamespace>
+    </plugin>
+  </gazebo>
+
+  <link
+    name="base_link">
+    <inertial>
+      <origin
+        xyz="0.0144400865250251 -6.60104062703856E-05 0.146786031406331"
+        rpy="0 0 0" />
+      <mass
+        value="100.0" />
+        <!-- original mass value -> 15.247735937513 -->
+      <inertia
+        ixx="0.372686602844475"
+        ixy="-1.83688250254965E-05"
+        ixz="0.0192495429225652"
+        iyy="0.438240361350242"
+        iyz="-0.000587078191420426"
+        izz="0.199038178101885" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/base_link.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.623529 0.63137 0.6392 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/base_link.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <link
+    name="link_z_1">
+    <inertial>
+      <origin
+        xyz="-5.79682988743228E-06 4.19618856142708E-06 -0.525998270206635"
+        rpy="0 0 0" />
+      <mass
+        value="1.22267059768639" />
+      <inertia
+        ixx="0.114828031883753"
+        ixy="2.94075999042326E-08"
+        ixz="2.4528731954147E-06"
+        iyy="0.114828026139327"
+        iyz="-1.88203327209681E-06"
+        izz="0.000469965140862399" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_z_1.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.623529 0.63137 0.6392 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_z_1.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="link_z_1"
+    type="prismatic">
+    <origin
+      xyz="0 0 1.3192"
+      rpy="0 0 0" />
+    <parent
+      link="base_link" />
+    <child
+      link="link_z_1" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="0.0"
+      upper="0.6"
+      effort="100.0"
+      velocity="0.25" />
+  </joint>
+
+  <!--Added this transmission bit and the effort/velocity in the joint limits
+  above based on same video as the gazebo section-->
+  <transmission name="tran1">
+    <type>transmission_interface/SimpleTrasmission</type>
+    <joint name="link_z_1">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor1">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+
+
+  <link
+    name="link_s_2">
+    <inertial>
+      <origin
+        xyz="0.203199999999953 -1.88740897974103E-15 -0.00158749999999985"
+        rpy="0 0 0" />
+      <mass
+        value="0.360158732724949" />
+      <inertia
+        ixx="0.000133279652162454"
+        ixy="3.7866839517575E-19"
+        ixz="3.90528369906583E-19"
+        iyy="0.00470795979463782"
+        iyz="-4.97317966329852E-20"
+        izz="0.00465038178946717" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_s_2.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_s_2.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="link_s_2"
+    type="revolute">
+    <origin
+      xyz="0 0 0.030163"
+      rpy="0 0 0.00020874" />
+    <parent
+      link="link_z_1" />
+    <child
+      link="link_s_2" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="100.0"
+      velocity="0.25" />
+  </joint>
+
+  <!--Added this transmission bit and the effort/velocity in the joint limits
+  above based on same video as the gazebo section-->
+  <transmission name="tran2">
+    <type>transmission_interface/SimpleTrasmission</type>
+    <joint name="link_s_2">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor2">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+
+
+
+  <link
+    name="link_e_3">
+    <inertial>
+      <origin
+        xyz="0.232894391705536 3.90312782094782E-18 -0.0264497839286548"
+        rpy="0 0 0" />
+      <mass
+        value="0.446742875527599" />
+      <inertia
+        ixx="0.00036116587331556"
+        ixy="6.70373638192575E-19"
+        ixz="0.000609616403037123"
+        iyy="0.0111335567296544"
+        iyz="-1.46914795661264E-19"
+        izz="0.0108587027200834" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_e_3.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_e_3.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="link_e_3"
+    type="revolute">
+    <origin
+      xyz="0.4064 0 -0.030852"
+      rpy="0 0 -0.00027966" />
+    <parent
+      link="link_s_2" />
+    <child
+      link="link_e_3" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="100.0"
+      velocity="0.25" />
+  </joint>
+
+  <!--Added this transmission bit and the effort/velocity in the joint limits
+  above based on same video as the gazebo section-->
+  <transmission name="tran3">
+    <type>transmission_interface/SimpleTrasmission</type>
+    <joint name="link_e_3">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor3">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+
+  <link
+    name="link_y_4">
+    <inertial>
+      <origin
+        xyz="-0.0356581122156573 -0.000823219273945868 -0.167576572380718"
+        rpy="0 0 0" />
+      <mass
+        value="0.450494849554684" />
+      <inertia
+        ixx="0.00231257382796611"
+        ixy="-3.02248759478458E-14"
+        ixz="-0.000212545001663747"
+        iyy="0.00242523764376027"
+        iyz="-9.84518897731293E-14"
+        izz="0.00021141987806483" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_y_4.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_y_4.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="link_y_4"
+    type="revolute">
+    <origin
+      xyz="0.49848 0 0.0072477"
+      rpy="0 0 -9.2018E-05" />
+    <parent
+      link="link_e_3" />
+    <child
+      link="link_y_4" />
+    <axis
+      xyz="0 0 1" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="100.0"
+      velocity="0.25" />
+  </joint>
+
+  <!--Added this transmission bit and the effort/velocity in the joint limits
+  above based on same video as the gazebo section-->
+  <transmission name="tran4">
+    <type>transmission_interface/SimpleTrasmission</type>
+    <joint name="link_y_4">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor4">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <link
+    name="link_p_5">
+    <inertial>
+      <origin
+        xyz="-0.00814073316057518 -0.0117507659223983 -0.00467394634575469"
+        rpy="0 0 0" />
+      <mass
+        value="0.213578753887578" />
+      <inertia
+        ixx="6.34328388146845E-05"
+        ixy="-3.87180405965072E-12"
+        ixz="2.22976523202745E-07"
+        iyy="3.69131492893689E-05"
+        iyz="3.33490623171196E-13"
+        izz="8.38972043023859E-05" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_p_5.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.752941176470588 0.752941176470588 0.752941176470588 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_p_5.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="link_p_5"
+    type="revolute">
+    <origin
+      xyz="-0.0381 0.009144 -0.34608"
+      rpy="0 -4.1453E-05 0" />
+    <parent
+      link="link_y_4" />
+    <child
+      link="link_p_5" />
+    <axis
+      xyz="0 1 0" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="100.0"
+      velocity="0.25" />
+  </joint>
+
+  <!--Added this transmission bit and the effort/velocity in the joint limits
+  above based on same video as the gazebo section-->
+  <transmission name="tran5">
+    <type>transmission_interface/SimpleTrasmission</type>
+    <joint name="link_p_5">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor5">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+  <link
+    name="link_r_6">
+    <inertial>
+      <origin
+        xyz="-0.0172618052013318 6.63637734779022E-05 -0.074648493478338"
+        rpy="0 0 0" />
+      <mass
+        value="3.58556672818967" />
+      <inertia
+        ixx="0.0278558763121995"
+        ixy="2.41113140619127E-09"
+        ixz="0.00349212168858671"
+        iyy="0.0220092890756524"
+        iyz="7.16100373161089E-10"
+        izz="0.0458573469087695" />
+    </inertial>
+    <visual>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_r_6.STL" />
+      </geometry>
+      <material
+        name="">
+        <color
+          rgba="0.0 0.0 0.0 1" />
+      </material>
+    </visual>
+    <collision>
+      <origin
+        xyz="0 0 0"
+        rpy="0 0 0" />
+      <geometry>
+        <mesh
+          filename="package://rasm_urdf/meshes/link_r_6.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint
+    name="link_r_6"
+    type="revolute">
+    <origin
+      xyz="-0.02159 -0.005734 0.01778"
+      rpy="0 0 0.00045481" />
+    <parent
+      link="link_p_5" />
+    <child
+      link="link_r_6" />
+    <axis
+      xyz="0 0 -1" />
+    <limit
+      lower="-3.14"
+      upper="3.14"
+      effort="100.0"
+      velocity="0.25" />
+  </joint>
+
+  <!--Added this transmission bit and the effort/velocity in the joint limits
+  above based on same video as the gazebo section-->
+  <transmission name="tran6">
+    <type>transmission_interface/SimpleTrasmission</type>
+    <joint name="link_r_6">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+    </joint>
+    <actuator name="motor6">
+      <hardwareInterface>EffortJointInterface</hardwareInterface>
+      <mechanicalReduction>1</mechanicalReduction>
+    </actuator>
+  </transmission>
+
+</robot>

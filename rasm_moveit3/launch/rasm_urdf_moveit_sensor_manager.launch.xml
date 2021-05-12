@@ -1,0 +1,4 @@
+<launch>
+    <rosparam command="load" file="$(find rasm_moveit3)/config/sensors_3d.yaml"/>
+
+</launch>

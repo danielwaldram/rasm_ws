@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+  <include file="$(find rasm_moveit3)/launch/spawn_urdf.launch"/>
+  <include file="$(find rasm_moveit3)/launch/rasm_control.launch" />
+</launch>

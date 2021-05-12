@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<launch>
+
+  <rosparam file = "$(find beginner_tutorials)/config/controllers.yaml" command="load"/>
+  <rosparam file = "$(find beginner_tutorials)/config/joint_limits.yaml" command="load"/>
+
+  <arg name = "model" default = "$(find rasm_urdf)/urdf/rasm_urdf.urdf"/>
+  <arg name = "gui" default = "true"/>
+
+  <param name="robot_description" command="cat $(arg model)" />
+  <param name= "use_gui" value = "$(arg gui)"/>
+
+  <node name = "rasm_hardware_interface" pkg="beginner_tutorials" type="MyRobot_hardware_inerface_node" output="screen"/>
+
+  <node name = "robot_state_publisher" pkg="robot_state_publisher" type="state_publisher" >
+  </node>
+
+  <node name="rviz" pkg="rviz" type="rviz" args="-d $(find rasm_urdf)/launch/config.rviz"/>
+
+  <node name = "controller_spawner" pkg="controller_manager" type = "spawner" respawn = "false" output = "screen"
+    args="
+    /rasm_urdf/joints_update
+    /rasm_urdf/Shoulder_EffortController
+    /rasm_urdf/Elbow_EffortController
+    /rasm_urdf/Yaw_EffortController
+    /rasm_urdf/Pitch_EffortController
+    /rasm_urdf/Roll_EffortController"/>
+
+</launch>
