@@ -1,6 +1,0 @@
-<launch>
-
-  <node name="test_commander_scripts" pkg="rasm_moveit_commander" type="move_group_python_test.py" respawn="false" output="screen">
-  </node>
-
-</launch>
