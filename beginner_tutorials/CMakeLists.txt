@@ -55,6 +55,9 @@ find_package(catkin REQUIRED COMPONENTS
  add_message_files(
    FILES
    Sensor_set_values.msg
+   pid_effort_commands.msg
+   rasm_arduino_commands.msg
+
  )
 
 ## Generate services in the 'srv' folder
@@ -138,11 +141,18 @@ include_directories(
 ## Declare a C++ executable
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
-# For the first argument, I made it the name of the node, which I am not sure is right
+# For the first argument, I made it the name of the node
 add_executable(MyRobot_hardware_inerface_node src/rasm_hardware_interface.cpp)
+add_executable(MyRobot_hardware_interface_node_v2 src/rasm_hardware_interface_v2.cpp)
+add_executable(My_robot_trajectory_node src/trajectory_subscriber_test.cpp)
+add_executable(effort_command_compiler_node src/effort_command_compiler.cpp)
+target_link_libraries(MyRobot_hardware_interface_node_v2 ${catkin_LIBRARIES})
+target_link_libraries(effort_command_compiler_node ${catkin_LIBRARIES})
+target_link_libraries(My_robot_trajectory_node ${catkin_LIBRARIES})
 target_link_libraries(MyRobot_hardware_inerface_node ${catkin_LIBRARIES})
+add_dependencies(MyRobot_hardware_interface_node_v2 beginner_tutorials_generate_messages_cpp)
 add_dependencies(MyRobot_hardware_inerface_node beginner_tutorials_generate_messages_cpp)
-
+add_dependencies(My_robot_trajectory_node beginner_tutorials_generate_messages_cpp)
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
 ## target back to the shorter version for ease of user use

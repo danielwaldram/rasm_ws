@@ -1,0 +1,9 @@
+ros_control_example/
+moveit_tutorials/
+panda_moveit_config/
+rasm_moveit/
+rasm_moveit2/
+rasm_moveit_commander/
+three_dof_planar_manipulator/
+three_dof_planar_manipulator_ikfast_arm_plugin/
+three_dof_planar_manipulator_moveit_config/

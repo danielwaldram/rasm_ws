@@ -79,8 +79,8 @@ int main(int argc, char **argv){
   stamped_face_to_goal.header.frame_id = "face_pose";
   stamped_face_to_goal.child_frame_id = "goal_pose";
   // 0.1m (~4") offset in the x direction accounts for the camera being mounted above the screen.
-  stamped_face_to_goal.transform.translation.x = 0.1;//0.0508;
-  stamped_face_to_goal.transform.translation.y = 0.0;
+  stamped_face_to_goal.transform.translation.x = 0.0;//0.0508;
+  stamped_face_to_goal.transform.translation.y = 0.02;
   // 0.55m offset in the z direction is the viewing distance from users face to screen
   stamped_face_to_goal.transform.translation.z = 0.55;//0.4315;
   stamped_face_to_goal.transform.rotation.x = q_eef_to_face.x();
@@ -194,6 +194,8 @@ int main(int argc, char **argv){
         }
         //display window
         cv::namedWindow( "demo", cv::WINDOW_NORMAL);
+        // camera frame grabbed each loop
+        cv::Mat temp;
 
     //Loop until the escape key is pressed.
     while (1)
@@ -203,9 +205,7 @@ int main(int argc, char **argv){
       stamped_face_to_goal.header.stamp = ros::Time::now();
       stamped_base_to_face.header.stamp = ros::Time::now();
       stamped_base_to_eef = tfBuffer.lookupTransform("base_link", "link_r_6", ros::Time(0));
-      //usleep(500000);
-        // Grab a frame
-        cv::Mat temp;
+        //Clear the buffer by grabbing a few frames
         cap >> temp;
         cap >> temp;
         cap >> temp;
