@@ -58,7 +58,7 @@ joint_limits:
     max_effort: 400
     min_effort: -400
   link_z_1:
-    has_velocity_limits: false
-    max_velocity: 0
-    has_acceleration_limits: false
-    max_acceleration: 0
+    has_velocity_limits: true
+    max_velocity: 0.005
+    has_acceleration_limits: true
+    max_acceleration: 0.005

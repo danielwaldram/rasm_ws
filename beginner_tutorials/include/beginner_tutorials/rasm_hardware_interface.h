@@ -9,6 +9,11 @@
 #include <boost/scoped_ptr.hpp>
 #include <ros/ros.h>
 #include "beginner_tutorials/Sensor_set_values.h"
+#include <hardware_interface/posvelacc_command_interface.h>
+#include "std_msgs/Float64.h"
+#include "beginner_tutorials/pid_effort_commands.h"
+
+
 
 // This is the class of the robots hardware which consists of the methods for
 // reading the joint sensor data, sending commands to the motor, and  the joint
@@ -28,20 +33,46 @@ public:
   // method for reading joint sensor data
   void read();
   // method for sending commnad to motors
-  void write(ros::Duration elapsed_time);
+  void write(ros::Duration elapsed_time, double *Vc_feedforward);
+  //method for computing the feedforward torque
+  void feedforward_torque(double *Vc_array);
+
+  void callback_pid_values(const beginner_tutorials::pid_effort_commands& msg){
+    pid_commands[0] = msg.commands[0];
+    pid_commands[1] = msg.commands[1];
+    pid_commands[2] = msg.commands[2];
+    pid_commands[3] = msg.commands[3];
+    pid_commands[4] = msg.commands[4];
+    pid_commands[5] = msg.commands[5];
+  }
 
   void callback_joint_positions(const beginner_tutorials::Sensor_set_values& msg){
-    ROS_INFO("I heard: [%i]", msg.sensor_values[0]);
+    //ROS_INFO("I heard: [%i]", msg.sensor_values[0]);cat
+
   	joint_position_[0] = msg.sensor_values[0]/1000.0;
-    joint_position_[1] = -(msg.sensor_values[1] - 500)*M_PI/512;
-    joint_position_[2] = (msg.sensor_values[2] - 492)*M_PI/512;
-    joint_position_[3] = (msg.sensor_values[3] - 352)*M_PI/512;
-    joint_position_[4] = (msg.sensor_values[4] - 558)*M_PI/512;
-    joint_position_[5] = -(msg.sensor_values[5] - 717)*M_PI/512;
+    joint_position_[1] = ((msg.sensor_values[1] - 5) - 490)*M_PI/501.5;
+    joint_position_[2] = ((msg.sensor_values[2] -5) - 520)*M_PI/501.5;
+    joint_position_[3] = ((msg.sensor_values[3] - 5)- 510)*M_PI/501.5;
+    joint_position_[4] = ((msg.sensor_values[4] - 5) - 800)*M_PI/501.5;
+    joint_position_[5] = -((msg.sensor_values[5] - 5) - 560)*M_PI/501.5;
+    low_pass_filter();
   };
 //-(msg.sensor_values[1] - 500)*M_PI/512;
   ros::Publisher pub;
+  ros::Publisher pub_elbow_state;
+  ros::Publisher pub_elbow_setpoint;
+  ros::Publisher pub_shoulder_state;
+  ros::Publisher pub_shoulder_setpoint;
+  ros::Publisher pub_z_1_state;
+  ros::Publisher pub_z_1_setpoint;
+  ros::Publisher pub_y_4_state;
+  ros::Publisher pub_y_4_setpoint;
+  ros::Publisher pub_p_5_state;
+  ros::Publisher pub_p_5_setpoint;
+  ros::Publisher pub_r_6_state;
+  ros::Publisher pub_r_6_setpoint;
   ros::Subscriber sub;
+  ros::Subscriber pid_subscriber;
   beginner_tutorials::Sensor_set_values joint_read;
   beginner_tutorials::Sensor_set_values effort_values;
   // I may need these two below but for now I will try to use a subscriber instead
@@ -53,7 +84,8 @@ protected:
   // Velocity could be as well, but I don't think it is needed for the RASM
   hardware_interface::JointStateInterface joint_state_interface_;
   hardware_interface::EffortJointInterface effort_joint_interface_;
-  hardware_interface::PositionJointInterface position_joint_interface_;
+  hardware_interface::PosVelAccJointInterface position_joint_interface_;
+ // hardware_interface::PosVelAccJointInterface pos_vel_acc_joint_interface_;
 
   joint_limits_interface::JointLimits limits[6];
   joint_limits_interface::EffortJointSaturationInterface effortJointSaturationInterface;
@@ -62,12 +94,221 @@ protected:
   // The joint position velocity and effort arrays are for reading
   // position effort and velocity from the robot. I don't know if I will have
   // anything to read except for position.
-  double joint_position_[6];
-  double joint_velocity_[6];
+  double joint_position_[6] = {0,0,0,0,0,0};
+  double joint_velocity_[6]= {0,0,0,0,0,0};
   double joint_effort_[6];
   double joint_effort_command_[6];
-  double joint_position_command_[6];
+  double joint_position_command_[6] = {0,0,0,0,0,0};
+  double joint_velocity_command_[6]= {0,0,0,0,0,0};
+  double joint_acceleration_command_[6] = {0,0,0,0,0,0};
+  double pid_commands[6] = {0,0,0,0,0,0};
+  bool first_time_filter_flag = 1;
+  double previous_position[6] = {0,0,0,0,0,0};
+  double current_position[6] = {0,0,0,0,0,0};
 
+    void velocity_calc(const ros::Duration& elapsed_time_){
+        joint_velocity_[1] = (current_position[1] - previous_position[1])/elapsed_time_.toSec();//Shoulder velocity
+        joint_velocity_[2] = (current_position[2] - previous_position[2])/elapsed_time_.toSec();//Elbow velocity
+        //ROS_INFO("current: %f, previous: %f, velocity: %lf", current_position[1], previous_position[1], joint_velocity_[1]);
+    }
+
+    void inverse_dynamic_calc(double *Vc_array){
+        //ROS_INFO("Feedforward Calc");
+        //Gear ratio
+        double N[2] = {1.5*96, 96};
+        //motor damping
+        double b = 0.000003716;
+        //motor coulomb friction
+        double c = 0.00404055;
+        //motor inertia
+        double J = 0.0000057904;
+        //gearbox efficiency
+        double eff = 0.73;
+        //amp gain
+        double gain = 1/15.8856;
+        //motor constant
+        double kt = 0.048;
+        //armature resistance
+        double Ra = 4.04;
+        //effective acceleration term
+        double u[2];
+
+        u[0] = pid_commands[1] + joint_acceleration_command_[1]; //Shoulder u value
+        u[1] = pid_commands[2] + joint_acceleration_command_[2]; //Elbow u value
+
+         // INERTIAL CALC
+        double H1, H2, H1_prime, H2_prime;
+        H1 = (2.1347 + 1.9865*cos(current_position[2]))*u[0] + (1.2328 + 0.99326*cos(current_position[2]))*u[1];
+        H2 = (1.2328 + 0.99326*cos(current_position[2]))*u[0] + 1.2328*u[1];
+        H1_prime = H1 + pow(N[0],2)*J*u[0];
+        H2_prime = H2 + pow(N[1],2)*J*u[1];
+
+        //FRICTION CALC
+        double F1,F2;
+        int sign_1 = 1;
+        int sign_2 = 1;
+        if(joint_velocity_[1] > 0){
+            sign_1 = 1;
+        }if(joint_velocity_[1] < 0){
+            sign_1 = -1;
+        }else{
+            sign_1 = 0;
+        }
+        if(joint_velocity_[2] > 0){
+            sign_2 = 1;
+        }if(joint_velocity_[2] < 0){
+            sign_2 = -1;
+        }else{
+            sign_2 = 0;
+        }
+        F1 = pow(N[0],2)*b*joint_velocity_[1] + N[0]*c*sign_1;
+        F2 = pow(N[1],2)*b*joint_velocity_[2] + N[1]*c*sign_2;
+        //ROS_INFO("  F:[%f ,%f] ", F1, F2);
+
+        // CENTRIPETAL/CORIOLIS CALC
+        double h, V1, V2;
+        h = 0.99326*sin(current_position[2]);
+        V1 = -2*h*joint_velocity_[1]*joint_velocity_[2] - h*pow(joint_velocity_[2],2);
+        V2 = h*pow(joint_velocity_[1],2);
+        //ROS_INFO("  C:[%f ,%f] ", V1, V2);
+        //TORQUE AT JOINTS CALC
+        double T1, T2;
+        T1 = F1 + V1 + H1_prime;
+        T2 = F2 + V2 + H2_prime;
+
+        //CONTROL VOLTAGE CALC
+        double Vc1, Vc2;
+        Vc1 = (1/gain)*(Ra/kt)*((1/eff)*(1/N[0])*T1 + (pow(kt,2)/Ra)*N[0]*joint_velocity_[1]);
+        Vc2 = (1/gain)*(Ra/kt)*((1/eff)*(1/N[1])*T2 + (pow(kt,2)/Ra)*N[1]*joint_velocity_[2]);
+        Vc_array[0] = Vc1;
+        Vc_array[1] = Vc2;
+        //ROS_INFO("  Vc:[%f ,%f] ", Vc_array[0], Vc_array[1]);
+        //ROS_INFO("  P:[%f ,%f] ", joint_position_command_[1], joint_position_command_[2]);
+        //ROS_INFO("  V:[%f ,%f] ", joint_velocity_command_[1], joint_velocity_command_[2]);
+        //ROS_INFO("  A:[%f ,%f] ", joint_acceleration_command_[1], joint_acceleration_command_[2]);
+        return;
+
+    }
+
+    void feedback_calc(double *Vc_array){
+        //ROS_INFO("Feedforward Calc");
+        //Gear ratio
+        double N[2] = {1.5*96, 96};
+        //motor damping
+        double b = 0.000003716;
+        //motor coulomb friction
+        double c = 0.00404055;
+        //motor inertia
+        double J = 0.0000057904;
+        //gearbox efficiency
+        double eff = 0.73;
+        //amp gain
+        double gain = 1/15.8856;
+        //motor constant
+        double kt = 0.048;
+        //armature resistance
+        double Ra = 4.04;
+
+        //FRICTION CALC
+        double F1,F2;
+        int sign_1 = 1;
+        int sign_2 = 1;
+        if(joint_velocity_[1] > 0){
+            sign_1 = 1;
+        }if(joint_velocity_[1] < 0){
+            sign_1 = -1;
+        }else{
+            sign_1 = 0;
+        }
+        if(joint_velocity_[2] > 0){
+            sign_2 = 1;
+        }if(joint_velocity_[2] < 0){
+            sign_2 = -1;
+        }else{
+            sign_2 = 0;
+        }
+        F1 = pow(N[0],2)*b*joint_velocity_[1] + N[0]*c*sign_1;
+        F2 = pow(N[1],2)*b*joint_velocity_[2] + N[1]*c*sign_2;
+        //ROS_INFO("  F:[%f ,%f] ", F1, F2);
+
+        // CENTRIPETAL/CORIOLIS CALC
+        double h, V1, V2;
+        h = 0.99326*sin(current_position[2]);
+        V1 = -2*h*joint_velocity_[1]*joint_velocity_[2] - h*pow(joint_velocity_[2],2);
+        V2 = h*pow(joint_velocity_[1],2);
+        //ROS_INFO("  C:[%f ,%f] ", V1, V2);
+        //TORQUE AT JOINTS CALC
+        double T1, T2;
+        T1 = F1 + V1;
+        T2 = F2 + V2;
+
+        //CONTROL VOLTAGE CALC
+        double Vc1, Vc2;
+        Vc1 = (1/gain)*(Ra/kt)*((1/eff)*(1/N[0])*T1 + (pow(kt,2)/Ra)*N[0]*joint_velocity_[1]);
+        Vc2 = (1/gain)*(Ra/kt)*((1/eff)*(1/N[1])*T2 + (pow(kt,2)/Ra)*N[1]*joint_velocity_[2]);
+        Vc_array[0] = Vc1;
+        Vc_array[1] = Vc2;
+        //ROS_INFO("  Vc:[%f ,%f] ", Vc_array[0], Vc_array[1]);
+        //ROS_INFO("  P:[%f ,%f] ", joint_position_command_[1], joint_position_command_[2]);
+        //ROS_INFO("  V:[%f ,%f] ", joint_velocity_command_[1], joint_velocity_command_[2]);
+        //ROS_INFO("  A:[%f ,%f] ", joint_acceleration_command_[1], joint_acceleration_command_[2]);
+        return;
+    }
+
+    void inv_dyn_write(ros::Duration elapsed_time, double *Vc_array){
+	effort_values.sensor_values.clear();
+	//this for loop converts the doubles saved in the pid_commands array to ints so that they can be sent to the Arduino
+	//for(int i = 0; i < 6; i++){
+	//	effort_values.sensor_values.push_back((int)pid_commands[i]);
+	//}
+	//z_1 joint which does not have feedforward
+	effort_values.sensor_values.push_back((int)pid_commands[0]);
+	//shoulder and elbow, which do have feedforward
+	effort_values.sensor_values.push_back((int)Vc_array[0]);
+	effort_values.sensor_values.push_back((int)Vc_array[1]);
+	//effort_values.sensor_values.push_back((int)Vc_feedforward[0]);
+	//effort_values.sensor_values.push_back((int)Vc_feedforward[1]);
+	for(int i = 3; i < 6; i++){
+		effort_values.sensor_values.push_back((int)pid_commands[i]);
+	}
+
+	pub.publish(effort_values);
+	effortJointSaturationInterface.enforceLimits(elapsed_time);
+	positionJointSaturationInterface.enforceLimits(elapsed_time);
+}
+
+
+
+  void low_pass_filter(){
+    double alpha = 0.1;
+    if(first_time_filter_flag == 1){
+        first_time_filter_flag = 0;
+        pub_z_1_state.publish(joint_position_[0]);
+        pub_elbow_state.publish(joint_position_[2]);
+        pub_shoulder_state.publish(joint_position_[1]);
+        pub_y_4_state.publish(joint_position_[3]);
+        pub_p_5_state.publish(joint_position_[4]);
+        pub_r_6_state.publish(joint_position_[5]);
+        for(int i = 0; i<6; i++){
+            previous_position[i] = (joint_position_[i]);
+        }
+    }else{
+        for(int i = 0; i<6; i++){
+            previous_position[i] = current_position[i];
+        }
+        for(int i = 0; i<6; i++){
+            current_position[i] = alpha*joint_position_[i] + (1-alpha)*previous_position[i];
+        }
+        pub_z_1_state.publish(current_position[0]);
+        pub_elbow_state.publish(current_position[2]);
+        pub_shoulder_state.publish(current_position[1]);
+        pub_y_4_state.publish(current_position[3]);
+        pub_p_5_state.publish(current_position[4]);
+        pub_r_6_state.publish(current_position[5]);
+
+    }
+
+  }
 
   ros::NodeHandle nh_;
   // my_control_loop_ is a timer which calls control loop (update method) at a

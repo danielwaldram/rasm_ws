@@ -6,6 +6,7 @@
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+#include <opencv2/video/tracking.hpp>
 #include <dlib/image_processing/frontal_face_detector.h>
 #include <dlib/image_processing/render_face_detections.h>
 #include <dlib/image_processing.h>
@@ -21,6 +22,8 @@
 #include <tf2_ros/transform_listener.h>
 #include <geometry_msgs/TransformStamped.h>
 
+void initKalmanFilter(cv::KalmanFilter &KF, int nStates, int nMeasurements, int nInputs, double dt);
+
 //Intrisics can be calculated using opencv sample code under opencv/sources/samples/cpp/tutorial_code/calib3d
 //Normally, you can also apprximate fx and fy by image width, cx by half image width, cy by half image height instead
 //The intrinsics are for the camera, so they shouldn't change with the computer
@@ -35,6 +38,16 @@ const double centimeter_to_inch_conversion = 1/2.54;
 
 int main(int argc, char **argv){
 
+    double hz = 10.0;
+
+    cv::KalmanFilter KF;    // instantiate Kalman Filter
+    int nStates = 18;       // the number of states
+    int nMeasurements = 6;  // the number of measured states
+    int nInputs = 0;        // then number of action control
+    double dt = 1/hz;
+    initKalmanFilter(KF, nStates, nMeasurements, nInputs, dt);  // init Kalman filter
+    cv::Mat measurements(nMeasurements, 1, CV_64FC1); measurements.setTo(cv::Scalar(0)); //initializing the measurement vector as zero
+
     // Code used to send the face pose values to a text file
     std::ofstream myfile;
     myfile.open("goal_pose_data.csv");
@@ -46,6 +59,7 @@ int main(int argc, char **argv){
   ros::NodeHandle nh;
   ros::Time start_time = ros::Time::now();
   ros::Time pose_time = ros::Time::now();
+  ros::Rate rate(hz);
 
   // The broadcaster and listener allow recieving info from and sending info to the tf tree
   tf2_ros::TransformBroadcaster tfb;
@@ -56,6 +70,7 @@ int main(int argc, char **argv){
   //They should show up in Rviz
   geometry_msgs::TransformStamped stamped_face_to_goal;
   geometry_msgs::TransformStamped stamped_base_to_face;
+  geometry_msgs::TransformStamped stamped_base_to_face_filtered;
   // This is the transform between the base and the end effector
   // it is needed so that the transform from the base to the face location can be determined
   geometry_msgs::TransformStamped stamped_base_to_eef;
@@ -92,10 +107,12 @@ int main(int argc, char **argv){
   stamped_base_to_face.header.frame_id = "base_link";
   stamped_base_to_face.child_frame_id = "face_pose";
 
+  // The child and parent IDs are defined here while the transformation values are defined in the loop
+  stamped_base_to_face_filtered.header.frame_id = "base_link";
+  stamped_base_to_face_filtered.child_frame_id = "filtered_face_pose";
+
   // This vector holds the transforms that are sent to the tf tree
   std::vector<geometry_msgs::TransformStamped> face_and_goal;
-
-  ros::Rate rate(30.0);
 
 
     //Load face detection and pose estimation models (dlib).
@@ -204,6 +221,7 @@ int main(int argc, char **argv){
       pose_time = ros::Time::now();
       stamped_face_to_goal.header.stamp = ros::Time::now();
       stamped_base_to_face.header.stamp = ros::Time::now();
+      stamped_base_to_face_filtered.header.stamp = ros::Time::now();
       stamped_base_to_eef = tfBuffer.lookupTransform("base_link", "link_r_6", ros::Time(0));
         //Clear the buffer by grabbing a few frames
         cap >> temp;
@@ -353,12 +371,15 @@ int main(int argc, char **argv){
             stamped_base_to_face.transform.translation.y = base_to_face.getOrigin()[1];
             stamped_base_to_face.transform.translation.z = base_to_face.getOrigin()[2];
 
+            measurements.at<double>(0) = y_pos;             // x
+            measurements.at<double>(1) = -x_pos;            // y
+            measurements.at<double>(2) = -z_pos;            // z
+            measurements.at<double>(3) = -yaw*M_PI/180;     // yaw
+            measurements.at<double>(4) = -pitch*M_PI/180;   // pitch
+            measurements.at<double>(5) = -roll*M_PI/180;    // roll
 
 
-            face_and_goal.clear();
-            face_and_goal.push_back(stamped_base_to_face);
-            face_and_goal.push_back(stamped_face_to_goal);
-            tfb.sendTransform(face_and_goal);
+
 
             myfile << (ros::Time::now() - start_time) << "," <<  stamped_base_to_face.transform.translation.x;
             myfile << "," <<  stamped_base_to_face.transform.translation.y << "," <<  stamped_base_to_face.transform.translation.z;
@@ -366,9 +387,45 @@ int main(int argc, char **argv){
             myfile << "," <<  stamped_base_to_face.transform.rotation.z << "," <<  stamped_base_to_face.transform.rotation.w;
             myfile << "\n";
 
+            rate.sleep();
+        }
+
+        KF.predict();   // First predict, to update the internal statePre variable
+        cv::Mat estimated = KF.correct(measurements);
+        if (faces.size() > 0){
+            if(pow((pow((estimated.at<double>(0) - measurements.at<double>(0)),2)+ pow((estimated.at<double>(1) - measurements.at<double>(1)),2) + pow((estimated.at<double>(2) - measurements.at<double>(2)),2) ),0.5) > 0.5){
+                face_and_goal.clear();
+                face_and_goal.push_back(stamped_base_to_face);
+                face_and_goal.push_back(stamped_face_to_goal);
+                tfb.sendTransform(face_and_goal);
+            }else{
+                // The eef_to_face transform is updated based on the values calculated using the face pose detector
+                q_eef_to_face.setRPY(estimated.at<double>(9),estimated.at<double>(10), estimated.at<double>(11));
+                eef_to_face.setRotation(q_eef_to_face);
+                eef_to_face.setOrigin(tf2::Vector3(estimated.at<double>(0),estimated.at<double>(1), estimated.at<double>(2)));
+
+                // The transform from the base to the face is updated
+                base_to_face = base_to_eef*eef_to_face;
+
+                q_base_to_face = base_to_face.getRotation();
+                stamped_base_to_face_filtered.transform.rotation.x = q_base_to_face.x();
+                stamped_base_to_face_filtered.transform.rotation.y = q_base_to_face.y();
+                stamped_base_to_face_filtered.transform.rotation.z = q_base_to_face.z();
+                stamped_base_to_face_filtered.transform.rotation.w = q_base_to_face.w();
+
+                stamped_base_to_face_filtered.transform.translation.x = base_to_face.getOrigin()[0];
+                stamped_base_to_face_filtered.transform.translation.y = base_to_face.getOrigin()[1];
+                stamped_base_to_face_filtered.transform.translation.z = base_to_face.getOrigin()[2];
+
+
+                face_and_goal.clear();
+                face_and_goal.push_back(stamped_base_to_face);
+                face_and_goal.push_back(stamped_base_to_face_filtered);
+                face_and_goal.push_back(stamped_face_to_goal);
+                tfb.sendTransform(face_and_goal);
             }
 
-
+        }
  //press esc to end
         cv::imshow("demo", temp);
         unsigned char key = cv::waitKey(1);
@@ -380,4 +437,65 @@ int main(int argc, char **argv){
           //r.sleep();
     }
     return 0;
+}
+
+
+void initKalmanFilter(cv::KalmanFilter &KF, int nStates, int nMeasurements, int nInputs, double dt)
+{
+  KF.init(nStates, nMeasurements, nInputs, CV_64F);                 // init Kalman Filter
+  cv::setIdentity(KF.processNoiseCov, cv::Scalar::all(1e-5));       // set process noise
+  cv::setIdentity(KF.measurementNoiseCov, cv::Scalar::all(1e-4));   // set measurement noise
+  cv::setIdentity(KF.errorCovPost, cv::Scalar::all(1));             // error covariance
+                 /* DYNAMIC MODEL */
+  //  [1 0 0 dt  0  0 dt2   0   0 0 0 0  0  0  0   0   0   0]
+  //  [0 1 0  0 dt  0   0 dt2   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 1  0  0 dt   0   0 dt2 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  1  0  0  dt   0   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  1  0   0  dt   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  1   0   0  dt 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  0   1   0   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  0   0   1   0 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  0   0   0   1 0 0 0  0  0  0   0   0   0]
+  //  [0 0 0  0  0  0   0   0   0 1 0 0 dt  0  0 dt2   0   0]
+  //  [0 0 0  0  0  0   0   0   0 0 1 0  0 dt  0   0 dt2   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 1  0  0 dt   0   0 dt2]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  1  0  0  dt   0   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  1  0   0  dt   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  1   0   0  dt]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   1   0   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   0   1   0]
+  //  [0 0 0  0  0  0   0   0   0 0 0 0  0  0  0   0   0   1]
+  // position
+  KF.transitionMatrix.at<double>(0,3) = dt;
+  KF.transitionMatrix.at<double>(1,4) = dt;
+  KF.transitionMatrix.at<double>(2,5) = dt;
+  KF.transitionMatrix.at<double>(3,6) = dt;
+  KF.transitionMatrix.at<double>(4,7) = dt;
+  KF.transitionMatrix.at<double>(5,8) = dt;
+  KF.transitionMatrix.at<double>(0,6) = 0.5*pow(dt,2);
+  KF.transitionMatrix.at<double>(1,7) = 0.5*pow(dt,2);
+  KF.transitionMatrix.at<double>(2,8) = 0.5*pow(dt,2);
+  // orientation
+  KF.transitionMatrix.at<double>(9,12) = dt;
+  KF.transitionMatrix.at<double>(10,13) = dt;
+  KF.transitionMatrix.at<double>(11,14) = dt;
+  KF.transitionMatrix.at<double>(12,15) = dt;
+  KF.transitionMatrix.at<double>(13,16) = dt;
+  KF.transitionMatrix.at<double>(14,17) = dt;
+  KF.transitionMatrix.at<double>(9,15) = 0.5*pow(dt,2);
+  KF.transitionMatrix.at<double>(10,16) = 0.5*pow(dt,2);
+  KF.transitionMatrix.at<double>(11,17) = 0.5*pow(dt,2);
+       /* MEASUREMENT MODEL */
+  //  [1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+  //  [0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+  //  [0 0 1 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0]
+  //  [0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0 0]
+  //  [0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0 0]
+  //  [0 0 0 0 0 0 0 0 0 0 0 1 0 0 0 0 0 0]
+  KF.measurementMatrix.at<double>(0,0) = 1;  // x
+  KF.measurementMatrix.at<double>(1,1) = 1;  // y
+  KF.measurementMatrix.at<double>(2,2) = 1;  // z
+  KF.measurementMatrix.at<double>(3,9) = 1;  // roll
+  KF.measurementMatrix.at<double>(4,10) = 1; // pitch
+  KF.measurementMatrix.at<double>(5,11) = 1; // yaw
 }
