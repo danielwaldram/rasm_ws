@@ -73,35 +73,33 @@ class MoveGroupPythonInterfaceClass(object):
         self.last_pose.orientation.y = 0
         self.last_pose.orientation.z = 0
         self.last_pose.orientation.w = 1
-        self.error = [0,0,0]
-        self.allowable_error = [0.1,0.1,0.1]
+        self.error = [0,0,0,0,0,0]
+        self.allowable_error = [0.01,0.01,0.01,0.01,0.01, 0.01]
+        self.euler_current = tf.transformations.euler_from_quaternion((0, 0, 0, 1))
+        self.euler_last = tf.transformations.euler_from_quaternion((0, 0, 0, 1))
+        self.new_plan = True
 
-
+    # The error is checked only to see if a new plan needs to be made, the face tracking node is where the goal pose is adjusted based on the screen location error
     def check_error(self, current_pose):
         self.error[0] = abs(current_pose.position.x - self.last_pose.position.x)
         self.error[1] = abs(current_pose.position.y - self.last_pose.position.y)
         self.error[2] = abs(current_pose.position.z - self.last_pose.position.z)
+        self.euler_current = tf.transformations.euler_from_quaternion((current_pose.orientation.x, current_pose.orientation.y, current_pose.orientation.z, current_pose.orientation.w))
+        self.euler_last = tf.transformations.euler_from_quaternion((self.last_pose.orientation.x, self.last_pose.orientation.y, self.last_pose.orientation.z, self.last_pose.orientation.w))
+        self.error[3] = abs(self.euler_current[0] - self.euler_last[0])
+        self.error[4] = abs(self.euler_current[1] - self.euler_last[1])
+        self.error[5] = abs(self.euler_current[2] - self.euler_last[2])
         print("Error:")
         print(self.error)
-
-
-    def adjust_pose(self, current_pose):
-        if self.error[0] < self.allowable_error[0]:
-            current_pose.position.x = self.last_pose.position.x
-        if self.error[1] < self.allowable_error[1]:
-            current_pose.position.y = self.last_pose.position.y
-        if self.error[2] < self.allowable_error[2]:
-            current_pose.position.z = self.last_pose.position.z
-        self.last_pose.position.x = current_pose.position.x
-        self.last_pose.position.y = current_pose.position.y
-        self.last_pose.position.z = current_pose.position.z
-        return current_pose
+        for i in range(len(self.error)):
+            if self.error[i] > self.allowable_error[i]:
+                self.new_plan = True
 
 
 
     def lookup_goal_pose(self):
         try:
-            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose",rospy.Time(0),rospy.Duration(2.0))
+            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose_adj",rospy.Time(0),rospy.Duration(2.0))
             if (rospy.Time.now() - rospy.Time(goal_from_base.header.stamp.secs)) > (rospy.Duration(20)):
                 return False
             return True
@@ -228,7 +226,7 @@ class MoveGroupPythonInterfaceClass(object):
     def eef_goal(self):
         # The transform between the rasm base and the goal pose is determined
         try:
-            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose",rospy.Time(0),rospy.Duration(2.0))
+            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose_adj",rospy.Time(0),rospy.Duration(2.0))
         except tf.LookupException:
             #If the goal pose hasn't been published yet, the RASM will go into search mode
             print("FACE POSE NEVER PUBLISHED: STARTING SEARCH MODE")
@@ -255,13 +253,15 @@ class MoveGroupPythonInterfaceClass(object):
         List_of_floats = [goal_from_base.transform.translation.x, goal_from_base.transform.translation.y, goal_from_base.transform.translation.z, goal_from_base.transform.rotation.x, goal_from_base.transform.rotation.y, goal_from_base.transform.rotation.z]
 
         self.check_error(my_pose)
-        my_pose = self.adjust_pose(my_pose)
+        if self.new_plan:              # if there is a new position to plan to then a now plan is set and planned to
+            self.new_plan = False
+            self.last_pose = my_pose   # last pose is set to the current pose only if the last pose is the one planned to
+            self.group.set_pose_target(my_pose)
+            plan = self.group.go(wait=False)
 
-        self.group.set_pose_target(my_pose)
         #self.group.set_planner_id("RTTConnectConfigDefault")
         #self.group.set_num_planning_attempts(20)
         #self.group.set_planning_time(5)
-        plan = self.group.go(wait=False)
         #raw_input("New Plan")
         self.pub.publish(my_pose)
         self.r.sleep()

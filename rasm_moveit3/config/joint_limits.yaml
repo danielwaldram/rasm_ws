@@ -28,7 +28,7 @@ joint_limits:
     has_acceleration_limits: true
     max_acceleration: 2.0
   link_z_1:
-    has_velocity_limits: false
+    has_velocity_limits: true
     max_velocity: 0.008
-    has_acceleration_limits: false
+    has_acceleration_limits: true
     max_acceleration: 1.0

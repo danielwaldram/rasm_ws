@@ -50,9 +50,9 @@ public:
     //ROS_INFO("I heard: [%i]", msg.sensor_values[0]);cat
 
   	joint_position_[0] = msg.sensor_values[0]/1000.0;
-    joint_position_[1] = ((msg.sensor_values[1] - 5) - 490)*M_PI/501.5;
-    joint_position_[2] = ((msg.sensor_values[2] -5) - 520)*M_PI/501.5;
-    joint_position_[3] = ((msg.sensor_values[3] - 5)- 510)*M_PI/501.5;
+    joint_position_[1] = ((msg.sensor_values[1] - 5) - 495)*M_PI/501.5;
+    joint_position_[2] = ((msg.sensor_values[2] -5) - 514)*M_PI/501.5;
+    joint_position_[3] = ((msg.sensor_values[3] - 5)- 535)*M_PI/501.5;
     joint_position_[4] = ((msg.sensor_values[4] - 5) - 800)*M_PI/501.5;
     joint_position_[5] = -((msg.sensor_values[5] - 5) - 560)*M_PI/501.5;
     low_pass_filter();

@@ -23,6 +23,7 @@
 #include <geometry_msgs/TransformStamped.h>
 
 void initKalmanFilter(cv::KalmanFilter &KF, int nStates, int nMeasurements, int nInputs, double dt);
+tf2::Transform adjust_goal_pose(tf2::Transform &ideal_to_goal, float &x_allowable, float &y_allowable, float &z_allowable, float &xrot_allow, float &yrot_allow, float &z_rot_allow);
 
 //Intrisics can be calculated using opencv sample code under opencv/sources/samples/cpp/tutorial_code/calib3d
 //Normally, you can also apprximate fx and fy by image width, cx by half image width, cy by half image height instead
@@ -69,6 +70,7 @@ int main(int argc, char **argv){
   //These are the two stamped transforms that get sent to the tf tree
   //They should show up in Rviz
   geometry_msgs::TransformStamped stamped_face_to_goal;
+  geometry_msgs::TransformStamped stamped_face_to_goal_adj;
   geometry_msgs::TransformStamped stamped_base_to_face;
   geometry_msgs::TransformStamped stamped_base_to_face_filtered;
   // This is the transform between the base and the end effector
@@ -88,14 +90,23 @@ int main(int argc, char **argv){
   tf2::Transform base_to_eef;
   tf2::Transform eef_to_face;
   tf2::Transform base_to_face;
+  tf2::Transform base_to_goal;
+  tf2::Transform base_to_ideal;
+  tf2::Transform face_to_ideal;
+  tf2::Transform ideal_to_goal;
+  tf2::Transform adj_ideal_to_goal;
+  tf2::Transform face_to_goal;
 
   // The transform between the face and the goal is defined here
   // it does need to be updated in the while loop other than the time stamp
   stamped_face_to_goal.header.frame_id = "face_pose";
   stamped_face_to_goal.child_frame_id = "goal_pose";
+
+  stamped_face_to_goal_adj.header.frame_id = "face_pose";
+  stamped_face_to_goal_adj.child_frame_id = "goal_pose_adj";
   // 0.1m (~4") offset in the x direction accounts for the camera being mounted above the screen.
-  stamped_face_to_goal.transform.translation.x = 0.0;//0.0508;
-  stamped_face_to_goal.transform.translation.y = 0.02;
+  stamped_face_to_goal.transform.translation.x = 0.02;//0.0508;
+  stamped_face_to_goal.transform.translation.y = 0.0;
   // 0.55m offset in the z direction is the viewing distance from users face to screen
   stamped_face_to_goal.transform.translation.z = 0.55;//0.4315;
   stamped_face_to_goal.transform.rotation.x = q_eef_to_face.x();
@@ -111,9 +122,31 @@ int main(int argc, char **argv){
   stamped_base_to_face_filtered.header.frame_id = "base_link";
   stamped_base_to_face_filtered.child_frame_id = "filtered_face_pose";
 
+  face_to_ideal.setRotation(q_eef_to_face);
+  face_to_ideal.setOrigin(tf2::Vector3(0.0, 0.02, 0.55));
+
+  base_to_goal.setRotation(q_eef_to_face);
+  base_to_goal.setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
+
   // This vector holds the transforms that are sent to the tf tree
   std::vector<geometry_msgs::TransformStamped> face_and_goal;
 
+  float x_allow = 0.05;
+  float y_allow = 0.05;
+  float z_allow = 0.05;
+  float xrot_allow = 0.1; //about
+  float yrot_allow = 0.1;
+  float zrot_allow = 0.1;
+  // These variables are used for outlier detection
+  float max_slope = 0.5;    // This is the max change in position allowable between two frames
+  double x_pos_prev = 0.0;  // prev x,y, and z position
+  double y_pos_prev = 0.0;
+  double z_pos_prev = 0.0;
+  bool data_possibly_corrupt = true;
+
+  double x_pos;
+  double y_pos;
+  double z_pos;
 
     //Load face detection and pose estimation models (dlib).
     dlib::frontal_face_detector detector;
@@ -220,6 +253,7 @@ int main(int argc, char **argv){
       // The transforms to be sent to the tf tree have thier timestamps updated
       pose_time = ros::Time::now();
       stamped_face_to_goal.header.stamp = ros::Time::now();
+      stamped_face_to_goal_adj.header.stamp = ros::Time::now();
       stamped_base_to_face.header.stamp = ros::Time::now();
       stamped_base_to_face_filtered.header.stamp = ros::Time::now();
       stamped_base_to_eef = tfBuffer.lookupTransform("base_link", "link_r_6", ros::Time(0));
@@ -312,17 +346,17 @@ int main(int argc, char **argv){
 
                           //show angle result
             //outtext << "X: " << std::setprecision(3) << euler_angle.at<double>(0);
-            double z_pos = -translation_vec.at<double>(1, 1)/100;
+            z_pos = -translation_vec.at<double>(1, 1)/100;
             outtext << "Distance from camera [m]: " << std::setprecision(3) << z_pos;
             cv::putText(temp, outtext.str(), cv::Point(50, 40), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
             outtext.str("");
-            double x_pos = x_distance/100;
+            x_pos = x_distance/100;
             outtext << "x position [m]: " << std::setprecision(3) << x_pos;
             //outtext << "Y: " << std::setprecision(3) << euler_angle.at<double>(1);
             cv::putText(temp, outtext.str(), cv::Point(50, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
             outtext.str("");
             //outtext << "Z: " << std::setprecision(3) << euler_angle.at<double>(2);
-            double y_pos = y_distance/100;
+            y_pos = y_distance/100;
             outtext << "y position [m]: " << std::setprecision(3) << y_pos;
             cv::putText(temp, outtext.str(), cv::Point(50, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
             outtext.str("");
@@ -361,6 +395,25 @@ int main(int argc, char **argv){
             // The transform from the base to the face is updated
             base_to_face = base_to_eef*eef_to_face;
 
+            base_to_ideal = base_to_face*face_to_ideal;
+
+            ideal_to_goal = base_to_ideal.inverse()*base_to_goal;
+
+            adj_ideal_to_goal = adjust_goal_pose(ideal_to_goal, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
+            // updating the face to goal
+            face_to_goal = face_to_ideal*adj_ideal_to_goal;
+            base_to_goal = base_to_face*face_to_goal;
+
+            q_base_to_face = face_to_goal.getRotation();
+            stamped_face_to_goal_adj.transform.rotation.x = q_base_to_face.x();
+            stamped_face_to_goal_adj.transform.rotation.y = q_base_to_face.y();
+            stamped_face_to_goal_adj.transform.rotation.z = q_base_to_face.z();
+            stamped_face_to_goal_adj.transform.rotation.w = q_base_to_face.w();
+            stamped_face_to_goal_adj.transform.translation.x = face_to_goal.getOrigin()[0];
+            stamped_face_to_goal_adj.transform.translation.y = face_to_goal.getOrigin()[1];
+            stamped_face_to_goal_adj.transform.translation.z = face_to_goal.getOrigin()[2];
+
+
             q_base_to_face = base_to_face.getRotation();
             stamped_base_to_face.transform.rotation.x = q_base_to_face.x();
             stamped_base_to_face.transform.rotation.y = q_base_to_face.y();
@@ -393,11 +446,26 @@ int main(int argc, char **argv){
         KF.predict();   // First predict, to update the internal statePre variable
         cv::Mat estimated = KF.correct(measurements);
         if (faces.size() > 0){
-            if(pow((pow((estimated.at<double>(0) - measurements.at<double>(0)),2)+ pow((estimated.at<double>(1) - measurements.at<double>(1)),2) + pow((estimated.at<double>(2) - measurements.at<double>(2)),2) ),0.5) > 0.5){
+            if(data_possibly_corrupt == true){
+                // set the data possibly corrupt as false for next loop and set the previous positions to be the current positions
+                data_possibly_corrupt = false;
+                x_pos_prev = x_pos;
+                y_pos_prev = y_pos;
+                z_pos_prev = z_pos;
+                // Send the unfiltered/unadjusted goal
                 face_and_goal.clear();
                 face_and_goal.push_back(stamped_base_to_face);
                 face_and_goal.push_back(stamped_face_to_goal);
                 tfb.sendTransform(face_and_goal);
+            }
+            else if(pow(pow((x_pos - x_pos_prev),2)+ pow((y_pos - y_pos_prev),2) + pow((z_pos-z_pos_prev), 2),0.5) > max_slope){
+                // Send the unfiltered/unadjusted goal
+                face_and_goal.clear();
+                face_and_goal.push_back(stamped_base_to_face);
+                face_and_goal.push_back(stamped_face_to_goal);
+                tfb.sendTransform(face_and_goal);
+                // Set data as possibly corrupt to true and don't hold on to this data as previous
+                data_possibly_corrupt = true;
             }else{
                 // The eef_to_face transform is updated based on the values calculated using the face pose detector
                 q_eef_to_face.setRPY(estimated.at<double>(9),estimated.at<double>(10), estimated.at<double>(11));
@@ -420,9 +488,14 @@ int main(int argc, char **argv){
 
                 face_and_goal.clear();
                 face_and_goal.push_back(stamped_base_to_face);
-                face_and_goal.push_back(stamped_base_to_face_filtered);
+                //face_and_goal.push_back(stamped_base_to_face_filtered);
                 face_and_goal.push_back(stamped_face_to_goal);
+                face_and_goal.push_back(stamped_face_to_goal_adj);
                 tfb.sendTransform(face_and_goal);
+                // Set the previous face pose to be the current for the next loop
+                x_pos_prev = x_pos;
+                y_pos_prev = y_pos;
+                z_pos_prev = z_pos;
             }
 
         }
@@ -499,3 +572,52 @@ void initKalmanFilter(cv::KalmanFilter &KF, int nStates, int nMeasurements, int 
   KF.measurementMatrix.at<double>(4,10) = 1; // pitch
   KF.measurementMatrix.at<double>(5,11) = 1; // yaw
 }
+
+// I need to determine what roll, pitch, and yaw correspond to in terms of x, y, and z
+tf2::Transform adjust_goal_pose(tf2::Transform &ideal_to_goal, float &x_allowable, float &y_allowable, float &z_allowable, float &roll_allowable, float &pitch_allowable, float &yaw_allowable){
+    tf2::Transform adj_ideal_to_goal;
+    tf2::Quaternion quat;
+
+    quat = ideal_to_goal.getRotation();     // getting the rotation from the ideal to the goal pose in terms of a quaternion
+    tf2::Matrix3x3 m(quat);                     // expressing the rotation in terms of a 3x3 matrix
+    double roll, pitch, yaw;                // getting the quaternion in terms of roll pitch and yaw for comparision to the threshold
+    m.getRPY(yaw, pitch, roll);             // expressing roll, pitch, and yaw in terms of how they relate to the joints of the RASM
+
+    // Adjusting the transform based on whether the threshold is exceeded for all 6-DOF
+    double x_adjusted, y_adjusted, z_adjusted, roll_adjusted, pitch_adjusted, yaw_adjusted;
+    if(abs(ideal_to_goal.getOrigin()[0]) > x_allowable){
+        x_adjusted = 0;
+    }else{
+        x_adjusted = ideal_to_goal.getOrigin()[0];
+    }
+    if(abs(ideal_to_goal.getOrigin()[1]) > y_allowable){
+        y_adjusted = 0;
+    }else{
+        y_adjusted = ideal_to_goal.getOrigin()[1];
+    }
+    if(abs(ideal_to_goal.getOrigin()[2]) > z_allowable){
+        z_adjusted = 0;
+    }else{
+        z_adjusted = ideal_to_goal.getOrigin()[2];
+    }
+    if(abs(roll) > roll_allowable){
+        roll_adjusted = 0;
+    }else{
+        roll_adjusted = roll;
+    }if(abs(pitch) > pitch_allowable){
+        pitch_adjusted = 0;
+    }else{
+        pitch_adjusted = pitch;
+    }if(abs(yaw) > yaw_allowable){
+        yaw_adjusted = 0;
+    }else{
+        yaw_adjusted = yaw;
+    }
+
+    //Will need to do for every case but will start testing with just this one
+    adj_ideal_to_goal.setOrigin(tf2::Vector3(x_adjusted, y_adjusted, z_adjusted));
+    quat.setRPY(yaw_adjusted, pitch_adjusted, roll_adjusted);
+    adj_ideal_to_goal.setRotation(quat);
+    return adj_ideal_to_goal;
+}
+
