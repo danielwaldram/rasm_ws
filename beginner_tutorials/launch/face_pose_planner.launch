@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+    <node name="rasm_face_pose_estimation" pkg="face_pose_estimation" type="rasm_face_pose_estimation" >
+    </node>
+    <node name="move_group_python_interface" pkg="beginner_tutorials" type="move_group_python_interface.py" >
+    </node>
+</launch>
