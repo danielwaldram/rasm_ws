@@ -105,7 +105,7 @@ int main(int argc, char **argv){
   stamped_face_to_goal_adj.header.frame_id = "face_pose";
   stamped_face_to_goal_adj.child_frame_id = "goal_pose_adj";
   // 0.1m (~4") offset in the x direction accounts for the camera being mounted above the screen.
-  stamped_face_to_goal.transform.translation.x = 0.02;//0.0508;
+  stamped_face_to_goal.transform.translation.x = 0.035;//0.0508;
   stamped_face_to_goal.transform.translation.y = 0.0;
   // 0.55m offset in the z direction is the viewing distance from users face to screen
   stamped_face_to_goal.transform.translation.z = 0.55;//0.4315;
@@ -123,7 +123,7 @@ int main(int argc, char **argv){
   stamped_base_to_face_filtered.child_frame_id = "filtered_face_pose";
 
   face_to_ideal.setRotation(q_eef_to_face);
-  face_to_ideal.setOrigin(tf2::Vector3(0.0, 0.02, 0.55));
+  face_to_ideal.setOrigin(tf2::Vector3(0.035, 0.0, 0.55));
 
   base_to_goal.setRotation(q_eef_to_face);
   base_to_goal.setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
@@ -131,12 +131,23 @@ int main(int argc, char **argv){
   // This vector holds the transforms that are sent to the tf tree
   std::vector<geometry_msgs::TransformStamped> face_and_goal;
 
-  float x_allow = 0.05;
-  float y_allow = 0.05;
-  float z_allow = 0.05;
-  float xrot_allow = 0.1; //about
-  float yrot_allow = 0.1;
-  float zrot_allow = 0.1;
+  float x_allow = 0.075;
+  float y_allow = 0.075;
+  float z_allow = 0.075;
+  float xrot_allow = 0.075;
+  float yrot_allow = 0.05;
+  float zrot_allow = 0.05;
+  // When the face is further from the screen, the tolerance required for replanning is higher
+  float x_allow_lazy = 0.15;
+  float y_allow_lazy = 0.15;
+  float z_allow_lazy = 0.15;
+  float xrot_allow_lazy = 0.15;
+  float yrot_allow_lazy = 0.15;
+  float zrot_allow_lazy = 0.15;
+
+  float tol_transition = 0.75;
+  float angle_tol_transition = 20;
+
   // These variables are used for outlier detection
   float max_slope = 0.5;    // This is the max change in position allowable between two frames
   double x_pos_prev = 0.0;  // prev x,y, and z position
@@ -399,7 +410,14 @@ int main(int argc, char **argv){
 
             ideal_to_goal = base_to_ideal.inverse()*base_to_goal;
 
-            adj_ideal_to_goal = adjust_goal_pose(ideal_to_goal, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
+            // If the face is more than the tolerance transition value from the screen, then the higher tolerance is used to update goal
+            // If not the lower tolerance is used
+            if(pow(pow((x_pos),2)+ pow((y_pos),2) + pow((z_pos), 2),0.5) > tol_transition || pow(pow((roll),2)+ pow((pitch),2) + pow((yaw), 2),0.5) > angle_tol_transition){
+                adj_ideal_to_goal = adjust_goal_pose(ideal_to_goal, x_allow_lazy, y_allow_lazy, z_allow_lazy, xrot_allow_lazy, yrot_allow_lazy, zrot_allow_lazy);
+            }else{
+                adj_ideal_to_goal = adjust_goal_pose(ideal_to_goal, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
+            }
+
             // updating the face to goal
             face_to_goal = face_to_ideal*adj_ideal_to_goal;
             base_to_goal = base_to_face*face_to_goal;

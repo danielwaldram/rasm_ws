@@ -273,7 +273,7 @@ def main():
 
     tutorial = MoveGroupPythonInterfaceClass()
 
-    tutorial.search_pose()
+    #tutorial.search_pose()
 
     try:
         while True:

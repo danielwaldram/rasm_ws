@@ -49,12 +49,12 @@ public:
   void callback_joint_positions(const beginner_tutorials::Sensor_set_values& msg){
     //ROS_INFO("I heard: [%i]", msg.sensor_values[0]);cat
 
-  	joint_position_[0] = msg.sensor_values[0]/1000.0;
-    joint_position_[1] = ((msg.sensor_values[1] - 5) - 495)*M_PI/501.5;
-    joint_position_[2] = ((msg.sensor_values[2] -5) - 514)*M_PI/501.5;
-    joint_position_[3] = ((msg.sensor_values[3] - 5)- 535)*M_PI/501.5;
-    joint_position_[4] = ((msg.sensor_values[4] - 5) - 800)*M_PI/501.5;
-    joint_position_[5] = -((msg.sensor_values[5] - 5) - 560)*M_PI/501.5;
+  	current_position[0] = msg.sensor_values[0]/1000.0;
+    current_position[1] = ((msg.sensor_values[1] - 5) - 495)*M_PI/501.5;
+    current_position[2] = ((msg.sensor_values[2] -5) - 514)*M_PI/501.5;
+    current_position[3] = ((msg.sensor_values[3] - 5)- 535)*M_PI/501.5;
+    current_position[4] = ((msg.sensor_values[4] - 5) - 800)*M_PI/501.5;
+    current_position[5] = -((msg.sensor_values[5] - 5) - 555)*M_PI/501.5;
     low_pass_filter();
   };
 //-(msg.sensor_values[1] - 500)*M_PI/512;
@@ -107,8 +107,8 @@ protected:
   double current_position[6] = {0,0,0,0,0,0};
 
     void velocity_calc(const ros::Duration& elapsed_time_){
-        joint_velocity_[1] = (current_position[1] - previous_position[1])/elapsed_time_.toSec();//Shoulder velocity
-        joint_velocity_[2] = (current_position[2] - previous_position[2])/elapsed_time_.toSec();//Elbow velocity
+        joint_velocity_[1] = (joint_position_[1] - previous_position[1])/elapsed_time_.toSec();//Shoulder velocity
+        joint_velocity_[2] = (joint_position_[2] - previous_position[2])/elapsed_time_.toSec();//Elbow velocity
         //ROS_INFO("current: %f, previous: %f, velocity: %lf", current_position[1], previous_position[1], joint_velocity_[1]);
     }
 
@@ -138,8 +138,8 @@ protected:
 
          // INERTIAL CALC
         double H1, H2, H1_prime, H2_prime;
-        H1 = (2.1347 + 1.9865*cos(current_position[2]))*u[0] + (1.2328 + 0.99326*cos(current_position[2]))*u[1];
-        H2 = (1.2328 + 0.99326*cos(current_position[2]))*u[0] + 1.2328*u[1];
+        H1 = (2.1347 + 1.9865*cos(joint_position_[2]))*u[0] + (1.2328 + 0.99326*cos(joint_position_[2]))*u[1];
+        H2 = (1.2328 + 0.99326*cos(joint_position_[2]))*u[0] + 1.2328*u[1];
         H1_prime = H1 + pow(N[0],2)*J*u[0];
         H2_prime = H2 + pow(N[1],2)*J*u[1];
 
@@ -167,7 +167,7 @@ protected:
 
         // CENTRIPETAL/CORIOLIS CALC
         double h, V1, V2;
-        h = 0.99326*sin(current_position[2]);
+        h = 0.99326*sin(joint_position_[2]);
         V1 = -2*h*joint_velocity_[1]*joint_velocity_[2] - h*pow(joint_velocity_[2],2);
         V2 = h*pow(joint_velocity_[1],2);
         //ROS_INFO("  C:[%f ,%f] ", V1, V2);
@@ -233,7 +233,7 @@ protected:
 
         // CENTRIPETAL/CORIOLIS CALC
         double h, V1, V2;
-        h = 0.99326*sin(current_position[2]);
+        h = 0.99326*sin(joint_position_[2]);
         V1 = -2*h*joint_velocity_[1]*joint_velocity_[2] - h*pow(joint_velocity_[2],2);
         V2 = h*pow(joint_velocity_[1],2);
         //ROS_INFO("  C:[%f ,%f] ", V1, V2);
@@ -282,6 +282,10 @@ protected:
   void low_pass_filter(){
     double alpha = 0.1;
     if(first_time_filter_flag == 1){
+        for(int i = 0; i<6; i++){
+            joint_position_[i] = (current_position[i]);
+            previous_position[i] = (joint_position_[i]);
+        }
         first_time_filter_flag = 0;
         pub_z_1_state.publish(joint_position_[0]);
         pub_elbow_state.publish(joint_position_[2]);
@@ -289,22 +293,19 @@ protected:
         pub_y_4_state.publish(joint_position_[3]);
         pub_p_5_state.publish(joint_position_[4]);
         pub_r_6_state.publish(joint_position_[5]);
-        for(int i = 0; i<6; i++){
-            previous_position[i] = (joint_position_[i]);
-        }
     }else{
         for(int i = 0; i<6; i++){
-            previous_position[i] = current_position[i];
+            previous_position[i] = joint_position_[i];
         }
         for(int i = 0; i<6; i++){
-            current_position[i] = alpha*joint_position_[i] + (1-alpha)*previous_position[i];
+            joint_position_[i] = alpha*current_position[i] + (1-alpha)*previous_position[i];
         }
-        pub_z_1_state.publish(current_position[0]);
-        pub_elbow_state.publish(current_position[2]);
-        pub_shoulder_state.publish(current_position[1]);
-        pub_y_4_state.publish(current_position[3]);
-        pub_p_5_state.publish(current_position[4]);
-        pub_r_6_state.publish(current_position[5]);
+        pub_z_1_state.publish(joint_position_[0]);
+        pub_elbow_state.publish(joint_position_[2]);
+        pub_shoulder_state.publish(joint_position_[1]);
+        pub_y_4_state.publish(joint_position_[3]);
+        pub_p_5_state.publish(joint_position_[4]);
+        pub_r_6_state.publish(joint_position_[5]);
 
     }
 
