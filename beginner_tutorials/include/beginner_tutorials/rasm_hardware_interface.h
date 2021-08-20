@@ -49,12 +49,21 @@ public:
   void callback_joint_positions(const beginner_tutorials::Sensor_set_values& msg){
     //ROS_INFO("I heard: [%i]", msg.sensor_values[0]);cat
 
-  	current_position[0] = msg.sensor_values[0]/1000.0;
-    current_position[1] = ((msg.sensor_values[1] - 5) - 495)*M_PI/501.5;
-    current_position[2] = ((msg.sensor_values[2] -5) - 514)*M_PI/501.5;
-    current_position[3] = ((msg.sensor_values[3] - 5)- 535)*M_PI/501.5;
-    current_position[4] = ((msg.sensor_values[4] - 5) - 800)*M_PI/501.5;
-    current_position[5] = -((msg.sensor_values[5] - 5) - 555)*M_PI/501.5;
+  	// PREVIOUS
+  	//current_position[0] = msg.sensor_values[0]/1000.0;
+    //current_position[1] = ((msg.sensor_values[1] - 5) - 495)*M_PI/501.5;
+    //current_position[2] = ((msg.sensor_values[2] -5) - 514)*M_PI/501.5;
+    //current_position[3] = ((msg.sensor_values[3] - 5)- 535)*M_PI/501.5;
+    //current_position[4] = ((msg.sensor_values[4] - 5) - 800)*M_PI/501.5;
+    //current_position[5] = -((msg.sensor_values[5] - 5) - 555)*M_PI/501.5;
+
+    current_position[0] = msg.sensor_values[0]/1000.0;
+    current_position[1] = (msg.sensor_values[1] - 1895)*2*M_PI/4095;
+    current_position[2] = (msg.sensor_values[2] - 2101)*2*M_PI/4095;
+    current_position[3] = (msg.sensor_values[3]- 2164)*2*M_PI/4095;
+    current_position[4] = (msg.sensor_values[4] - 3359)*2*M_PI/4095;
+    current_position[5] = -(msg.sensor_values[5] - 2240)*M_PI/4095;
+
     low_pass_filter();
   };
 //-(msg.sensor_values[1] - 500)*M_PI/512;
@@ -71,10 +80,12 @@ public:
   ros::Publisher pub_p_5_setpoint;
   ros::Publisher pub_r_6_state;
   ros::Publisher pub_r_6_setpoint;
+  ros::Publisher pub_velocity_filter;
   ros::Subscriber sub;
   ros::Subscriber pid_subscriber;
   beginner_tutorials::Sensor_set_values joint_read;
   beginner_tutorials::Sensor_set_values effort_values;
+  beginner_tutorials::pid_effort_commands velocity_filtered;
   // I may need these two below but for now I will try to use a subscriber instead
   //ros::ServiceClient client;
   //beginner_tutorials::HardwareJointPositions joint_read;
@@ -105,6 +116,8 @@ protected:
   bool first_time_filter_flag = 1;
   double previous_position[6] = {0,0,0,0,0,0};
   double current_position[6] = {0,0,0,0,0,0};
+  double velocity_filter_test[6] = {0,0,0,0,0,0};
+  double velocity_filter_test_prev[6] = {0,0,0,0,0,0};
 
     void velocity_calc(const ros::Duration& elapsed_time_){
         joint_velocity_[1] = (joint_position_[1] - previous_position[1])/elapsed_time_.toSec();//Shoulder velocity
@@ -280,7 +293,8 @@ protected:
 
 
   void low_pass_filter(){
-    double alpha = 0.1;
+    double alpha_z = 0.1;
+    double alpha = 0.8;
     if(first_time_filter_flag == 1){
         for(int i = 0; i<6; i++){
             joint_position_[i] = (current_position[i]);
@@ -297,8 +311,14 @@ protected:
         for(int i = 0; i<6; i++){
             previous_position[i] = joint_position_[i];
         }
-        for(int i = 0; i<6; i++){
+        velocity_filtered.commands.clear();
+        joint_position_[0] = alpha_z*current_position[0] + (1-alpha_z)*previous_position[0];
+        for(int i = 1; i<6; i++){
             joint_position_[i] = alpha*current_position[i] + (1-alpha)*previous_position[i];
+            // DATA FOR TEST OF VELOCITY FILTER
+            velocity_filter_test[i] = alpha*joint_velocity_[i] + (1-alpha)*velocity_filter_test_prev[i];
+            velocity_filter_test_prev[i] = velocity_filter_test[i];
+            velocity_filtered.commands.push_back(velocity_filter_test[i]);
         }
         pub_z_1_state.publish(joint_position_[0]);
         pub_elbow_state.publish(joint_position_[2]);
@@ -306,7 +326,7 @@ protected:
         pub_y_4_state.publish(joint_position_[3]);
         pub_p_5_state.publish(joint_position_[4]);
         pub_r_6_state.publish(joint_position_[5]);
-
+        pub_velocity_filter.publish(velocity_filtered);
     }
 
   }

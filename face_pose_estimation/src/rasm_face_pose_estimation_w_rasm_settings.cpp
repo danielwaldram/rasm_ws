@@ -21,7 +21,10 @@
 #include <tf2/LinearMath/Transform.h>
 #include <tf2_ros/transform_listener.h>
 #include <geometry_msgs/TransformStamped.h>
+#include "face_pose_estimation/rasm_settings.h"
+#include "beginner_tutorials/Sensor_set_values.h"
 
+void adjust_face_pose(tf2::Transform &cam_to_face, tf2::Transform &cam_to_face_prev, float &x_allowable, float &y_allowable, float &z_allowable, float &roll_allowable, float &pitch_allowable, float &yaw_allowable);
 void initKalmanFilter(cv::KalmanFilter &KF, int nStates, int nMeasurements, int nInputs, double dt);
 tf2::Transform adjust_goal_pose(tf2::Transform &ideal_to_goal, float &x_allowable, float &y_allowable, float &z_allowable, float &xrot_allow, float &yrot_allow, float &z_rot_allow);
 
@@ -34,9 +37,38 @@ double K[9] = {7.3530833553043510e+02, 0.0, 320.0, 0.0, 7.3530833553043510e+02, 
 double D[5] = {-2.3528667558034226e-02, 1.3301431879108856e+00, 0.0, 0.0,
     -6.0786673300480434e+00};
 
-float screen_distance = 0.55;
 const int debounce_camera_time_delay = 1;
 const double centimeter_to_inch_conversion = 1/2.54;
+
+float screen_distance = 0.70;
+float screen_vertical_shift =  -0.0;
+// The sensitivity of the RASM to movement in the x, y, and z directions as well as rotations
+float x_allow = 0.04;
+float y_allow = 0.04;
+float z_allow = 0.04;
+float xrot_allow = 0.05;   //roll
+float yrot_allow = 0.1;    //pitch
+float zrot_allow = 0.15;    //yaw
+float x_transition = 0.1;
+float y_transition = 0.1;
+float z_transition = 0.1;
+float roll_transition = 0.1;
+float pitch_transition = 0.3;
+float yaw_transition = 0.3;
+int lazy_adjust = 0;
+
+beginner_tutorials::Sensor_set_values error_count;
+
+bool rasm_new_settings(face_pose_estimation::rasm_settings::Request &req, face_pose_estimation::rasm_settings::Response &res){
+    x_allow = req.sensitivity[0];
+    y_allow = req.sensitivity[1];
+    z_allow = req.sensitivity[2];
+    xrot_allow = req.sensitivity[3];
+    yrot_allow = req.sensitivity[4];
+    zrot_allow = req.sensitivity[5];
+    screen_distance = req.screen_distance;
+    return true;
+}
 
 int main(int argc, char **argv){
 
@@ -50,15 +82,10 @@ int main(int argc, char **argv){
     initKalmanFilter(KF, nStates, nMeasurements, nInputs, dt);  // init Kalman filter
     cv::Mat measurements(nMeasurements, 1, CV_64FC1); measurements.setTo(cv::Scalar(0)); //initializing the measurement vector as zero
 
-    // Code used to send the face pose values to a text file
-    std::ofstream myfile;
-    myfile.open("goal_pose_data.csv");
-    myfile << " time,x_position,y_position,z_position,x_rotation,y_rotation,z_rotation,w_rotation \n";
-    //End of code used to send the face pose values to a text file
-
-
   ros::init(argc, argv, "rasm_face_pose");
   ros::NodeHandle nh;
+  ros::Publisher pub = nh.advertise<beginner_tutorials::Sensor_set_values>("error_counter",10);
+  ros::ServiceServer service = nh.advertiseService("rasm_settings", rasm_new_settings);
   ros::Time start_time = ros::Time::now();
   ros::Time pose_time = ros::Time::now();
   ros::Rate rate(hz);
@@ -74,6 +101,7 @@ int main(int argc, char **argv){
   geometry_msgs::TransformStamped stamped_face_to_goal_adj;
   geometry_msgs::TransformStamped stamped_base_to_face;
   geometry_msgs::TransformStamped stamped_base_to_face_filtered;
+  geometry_msgs::TransformStamped stamped_base_to_face_raw;
   // This is the transform between the base and the end effector
   // it is needed so that the transform from the base to the face location can be determined
   geometry_msgs::TransformStamped stamped_base_to_eef;
@@ -88,12 +116,18 @@ int main(int argc, char **argv){
 
   // The transform from base_to_eef and from eef_to_goal are used to calc the transform from base_to_face
   // which is then used to populate the stamped base_to_face transformation.
+  tf2::Transform eef_to_cam;
+  tf2::Transform cam_to_face;
+  tf2::Transform cam_to_face_raw;
+  tf2::Transform cam_to_face_prev;
+  tf2::Transform base_to_cam;
   tf2::Transform base_to_eef;
   tf2::Transform eef_to_face;
   tf2::Transform base_to_face;
+  tf2::Transform base_to_face_prev;
+  tf2::Transform base_to_face_raw;
   tf2::Transform base_to_goal;
   tf2::Transform base_to_ideal;
-  tf2::Transform face_to_ideal;
   tf2::Transform ideal_to_goal;
   tf2::Transform adj_ideal_to_goal;
   tf2::Transform face_to_goal;
@@ -106,10 +140,12 @@ int main(int argc, char **argv){
   stamped_face_to_goal_adj.header.frame_id = "face_pose";
   stamped_face_to_goal_adj.child_frame_id = "goal_pose_adj";
   // 0.1m (~4") offset in the x direction accounts for the camera being mounted above the screen.
-  stamped_face_to_goal.transform.translation.x = 0.035;//0.0508;
+  float eef_to_cam_x = 0.121;
+  stamped_face_to_goal.transform.translation.x = screen_vertical_shift - eef_to_cam_x;
   stamped_face_to_goal.transform.translation.y = 0.0;
+  float eef_to_cam_z = -0.136;
   // 0.55m offset in the z direction is the viewing distance from users face to screen
-  stamped_face_to_goal.transform.translation.z = 0.65;//0.4315;
+  stamped_face_to_goal.transform.translation.z = screen_distance - eef_to_cam_z;
   stamped_face_to_goal.transform.rotation.x = q_eef_to_face.x();
   stamped_face_to_goal.transform.rotation.y = q_eef_to_face.y();
   stamped_face_to_goal.transform.rotation.z = q_eef_to_face.z();
@@ -119,34 +155,37 @@ int main(int argc, char **argv){
   stamped_base_to_face.header.frame_id = "base_link";
   stamped_base_to_face.child_frame_id = "face_pose";
 
+  stamped_base_to_face_raw.header.frame_id = "base_link";
+  stamped_base_to_face_raw.child_frame_id = "face_pose_raw";
+
   // The child and parent IDs are defined here while the transformation values are defined in the loop
   stamped_base_to_face_filtered.header.frame_id = "base_link";
   stamped_base_to_face_filtered.child_frame_id = "filtered_face_pose";
 
-  face_to_ideal.setRotation(q_eef_to_face);
-  face_to_ideal.setOrigin(tf2::Vector3(0.035, 0.0, 0.55));
+  face_to_goal.setRotation(q_eef_to_face);
+  face_to_goal.setOrigin(tf2::Vector3(screen_vertical_shift - eef_to_cam_x, 0.0, screen_distance - eef_to_cam_z));
+
+  eef_to_cam.setRotation(q_eef_to_face);
+  eef_to_cam.setOrigin(tf2::Vector3(eef_to_cam_x, 0.0, eef_to_cam_z));
 
   base_to_goal.setRotation(q_eef_to_face);
   base_to_goal.setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
 
+  base_to_face_prev.setRotation(q_eef_to_face);
+  base_to_face_prev.setOrigin(tf2::Vector3(0.0, 0.0, 0.0));
+
   // This vector holds the transforms that are sent to the tf tree
   std::vector<geometry_msgs::TransformStamped> face_and_goal;
 
-  float x_allow = 0.1;
-  float y_allow = 0.1;
-  float z_allow = 0.075;
-  float xrot_allow = 0.075;
-  float yrot_allow = 0.05;
-  float zrot_allow = 0.05;
   // When the face is further from the screen, the tolerance required for replanning is higher
-  float x_allow_lazy = 0.15;
-  float y_allow_lazy = 0.15;
-  float z_allow_lazy = 0.15;
-  float xrot_allow_lazy = 0.15;
+  float x_allow_lazy = 0.05;
+  float y_allow_lazy = 0.05;
+  float z_allow_lazy = 0.05;
+  float xrot_allow_lazy = 0.1;
   float yrot_allow_lazy = 0.15;
-  float zrot_allow_lazy = 0.15;
+  float zrot_allow_lazy = 0.2;
 
-  float tol_transition = 0.9;
+  float tol_transition = 0.75;
   float angle_tol_transition = 20;
 
   // These variables are used for outlier detection
@@ -154,6 +193,9 @@ int main(int argc, char **argv){
   double x_pos_prev = 0.0;  // prev x,y, and z position
   double y_pos_prev = 0.0;
   double z_pos_prev = 0.0;
+  double roll_prev = 0.0;
+  double pitch_prev = 0.0;
+  double yaw_prev = 0.0;
   bool data_possibly_corrupt = true;
 
   double x_pos;
@@ -264,12 +306,15 @@ int main(int argc, char **argv){
     {
       // The transforms to be sent to the tf tree have thier timestamps updated
       pose_time = ros::Time::now();
+      stamped_base_to_face_raw.header.stamp = ros::Time::now();
       stamped_face_to_goal.header.stamp = ros::Time::now();
+      stamped_face_to_goal.transform.translation.z = screen_distance - eef_to_cam_z;    //This needs to be updated in the while loop in case the screen distance value is changed through a service request
       stamped_face_to_goal_adj.header.stamp = ros::Time::now();
       stamped_base_to_face.header.stamp = ros::Time::now();
       stamped_base_to_face_filtered.header.stamp = ros::Time::now();
       stamped_base_to_eef = tfBuffer.lookupTransform("base_link", "link_r_6", ros::Time(0));
         //Clear the buffer by grabbing a few frames
+        cap >> temp;
         cap >> temp;
         cap >> temp;
         cap >> temp;
@@ -293,7 +338,6 @@ int main(int argc, char **argv){
                 cv::circle(temp, cv::Point(shape.part(i).x(), shape.part(i).y()), 2, cv::Scalar(0, 0, 255), -1);
                 }
 
-                //cv::circle(temp, cv::Point(translation_vec.at<double>(1,1), translation_vec.at<double>(1,2)), 2, cv::Scalar(0, 0, 255), -1);
             //fill in 2D ref points, annotations follow https://ibug.doc.ic.ac.uk/resources/300-W/
 
             image_pts.push_back(cv::Point2d(shape.part(17).x(), shape.part(17).y())); //#17 left brow left corner
@@ -344,8 +388,8 @@ int main(int argc, char **argv){
             double x_for_pose = my_x/temp.cols;
             double y_for_pose = my_y/temp.rows;
             //Not sure what this is for. Makes x/y_for_pose between .5 and -.5
-            x_for_pose = x_for_pose -0.5;
-            y_for_pose = y_for_pose -0.5;
+            x_for_pose = x_for_pose - 0.5;
+            y_for_pose = y_for_pose - 0.5;
             //Again not sure what the purpose of this is
             double x_distance = -translation_vec.at<double>(1,1)*atan(27.6*3.14159265/180)*x_for_pose/0.5;
             double y_distance = translation_vec.at<double>(1,1)*atan(20*3.14159265/180)*y_for_pose/0.5;
@@ -359,14 +403,11 @@ int main(int argc, char **argv){
 
                           //show angle result
             //outtext << "X: " << std::setprecision(3) << euler_angle.at<double>(0);
-            //translation_vec.at<double>(2) corresonded to z-pos
             z_pos = -translation_vec.at<double>(1, 1)/100;
-            ROS_INFO("translation_vec(1,1): %f\n", z_pos);
             outtext << "Distance from camera [m]: " << std::setprecision(3) << z_pos;
             cv::putText(temp, outtext.str(), cv::Point(50, 40), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
             outtext.str("");
             x_pos = x_distance/100;
-            // x_pos corresponds to translation_vec.at<double>(1) but is the opposite sign
             outtext << "x position [m]: " << std::setprecision(3) << x_pos;
             //outtext << "Y: " << std::setprecision(3) << euler_angle.at<double>(1);
             cv::putText(temp, outtext.str(), cv::Point(50, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
@@ -378,103 +419,116 @@ int main(int argc, char **argv){
             outtext.str("");
             //outtext << "rot_vec 1: " << std::setprecision(3) << rotation_vec.at<double>(1, 1);
             double pitch = euler_angle.at<double>(0);
-            outtext << "Pitch in degrees: " << std::setprecision(3) << pitch;
+            outtext << "Pitch [deg]: " << std::setprecision(3) << pitch;
             cv::putText(temp, outtext.str(), cv::Point(50, 100), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
             outtext.str("");
             //outtext << "rot_vec 2: " << std::setprecision(3) << rotation_vec.at<double>(2, 1);
             double yaw = euler_angle.at<double>(1);
-            outtext << "Yaw in degrees: " << std::setprecision(3) << yaw;
+            outtext << "Yaw in [deg]: " << std::setprecision(3) << yaw;
             cv::putText(temp, outtext.str(), cv::Point(50, 120), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
             outtext.str("");
             //outtext << "rot_vec 3: " << std::setprecision(3) << rotation_vec.at<double>(3, 1);
             double roll = euler_angle.at<double>(2);
-            outtext << "Roll in degrees: " << std::setprecision(3) << roll;
+            outtext << "Roll in [deg]: " << std::setprecision(3) << roll;
             cv::putText(temp, outtext.str(), cv::Point(50, 140), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
             outtext.str("");
             char buffer[100];
 
-            outtext << std::setprecision(3) << translation_vec.at<double>(0);
-            cv::putText(temp, outtext.str(), cv::Point(100, 200), cv::FONT_HERSHEY_SIMPLEX, 1.5, cv::Scalar(0, 0, 255), 3);
-            outtext.str("");
-            outtext << std::setprecision(3) << translation_vec.at<double>(1);
-            cv::putText(temp, outtext.str(), cv::Point(100, 280), cv::FONT_HERSHEY_SIMPLEX, 1.5, cv::Scalar(0, 0, 255), 3);
-            outtext.str("");
-            outtext << std::setprecision(3) << translation_vec.at<double>(2);
-            cv::putText(temp, outtext.str(), cv::Point(100, 360), cv::FONT_HERSHEY_SIMPLEX, 1.5, cv::Scalar(0, 0, 255), 3);
+            outtext << buffer;
+            cv::putText(temp, outtext.str(), cv::Point(100, 200), cv::FONT_HERSHEY_SIMPLEX, 1.5, cv::Scalar(255, 255, 255), 3);
             outtext.str("");
             ////////////////// clear image points ////////////////
             image_pts.clear();
-
+            //Set the new screen in case the service has been called
             // The stamped transform and transform from the base to the eef is refreshed
             base_to_eef.setRotation(tf2::Quaternion(stamped_base_to_eef.transform.rotation.x,stamped_base_to_eef.transform.rotation.y, stamped_base_to_eef.transform.rotation.z, stamped_base_to_eef.transform.rotation.w));
             base_to_eef.setOrigin(tf2::Vector3(stamped_base_to_eef.transform.translation.x, stamped_base_to_eef.transform.translation.y, stamped_base_to_eef.transform.translation.z));
 
             // The eef_to_face transform is updated based on the values calculated using the face pose detector
             q_eef_to_face.setRPY(-yaw*M_PI/180, -pitch*M_PI/180, -roll*M_PI/180);
-            eef_to_face.setRotation(q_eef_to_face);
-            eef_to_face.setOrigin(tf2::Vector3(y_pos, -x_pos, -z_pos));
+            cam_to_face_raw.setRotation(q_eef_to_face);
+            cam_to_face_raw.setOrigin(tf2::Vector3(y_pos, -x_pos, -z_pos));
+            //eef_to_face.setRotation(q_eef_to_face);
+            cam_to_face.setRotation(q_eef_to_face);
+            //eef_to_face.setOrigin(tf2::Vector3(y_pos, -x_pos, -z_pos));
+            cam_to_face.setOrigin(tf2::Vector3(y_pos, -x_pos, -z_pos));
 
             // The transform from the base to the face is updated
-            base_to_face = base_to_eef*eef_to_face;
+            //Previously: base_to_face = base_to_eef*eef_to_face;
+            base_to_cam = base_to_eef*eef_to_cam;
+            base_to_face = base_to_cam*cam_to_face;
 
-            base_to_ideal = base_to_face*face_to_ideal;
+            //cam_to_face = base_to_cam.inverse()*base_to_face;
+            cam_to_face_prev = base_to_cam.inverse()*base_to_face_prev;
 
-            ideal_to_goal = base_to_ideal.inverse()*base_to_goal;
+            base_to_face_raw = base_to_face;
+
+
+            tf2::Quaternion quat;
+            quat = cam_to_face.getRotation();
+            tf2::Matrix3x3 m_cam_to_face(quat);
+            double cam_to_face_roll, cam_to_face_pitch, cam_to_face_yaw;
+            m_cam_to_face.getRPY(cam_to_face_yaw, cam_to_face_pitch, cam_to_face_roll);
+
+            lazy_adjust = 0;
+            if(abs(cam_to_face.getOrigin()[0] - screen_vertical_shift) > x_transition){
+                lazy_adjust = 1;
+            }else if(abs(cam_to_face.getOrigin()[1] - 0) > y_transition){
+                lazy_adjust = 1;
+            }else if(abs(cam_to_face.getOrigin()[2] - (-screen_distance)) > z_transition){
+                lazy_adjust = 1;
+            }else if(abs(cam_to_face_roll) > roll_transition){
+                lazy_adjust = 1;
+            }else if(abs(cam_to_face_pitch) > pitch_transition){
+                lazy_adjust = 1;
+            }else if(abs(cam_to_face_yaw) > yaw_transition){
+                lazy_adjust = 1;
+            }else{
+                lazy_adjust = 0;
+            }
+
+            if(lazy_adjust == 0){
+                adjust_face_pose(cam_to_face, cam_to_face_prev, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
+            }else{
+                adjust_face_pose(cam_to_face, cam_to_face_prev, x_allow_lazy, y_allow_lazy, z_allow_lazy, xrot_allow_lazy, yrot_allow_lazy, zrot_allow_lazy);
+            }
+            //Adjusting based on error
+            pub.publish(error_count);
+            //recalc base to face based on adjusted values
+            base_to_face = base_to_cam*cam_to_face;
+
+            //base_to_ideal = base_to_face*face_to_ideal;
+
+            //ideal_to_goal = base_to_ideal.inverse()*base_to_goal;
 
             // If the face is more than the tolerance transition value from the screen, then the higher tolerance is used to update goal
             // If not the lower tolerance is used
-            if(pow(pow((x_pos),2)+ pow((y_pos),2) + pow((z_pos), 2),0.5) > tol_transition || pow(pow((roll),2)+ pow((pitch),2) + pow((yaw), 2),0.5) > angle_tol_transition){
-                adj_ideal_to_goal = adjust_goal_pose(ideal_to_goal, x_allow_lazy, y_allow_lazy, z_allow_lazy, xrot_allow_lazy, yrot_allow_lazy, zrot_allow_lazy);
-            }else{
-                adj_ideal_to_goal = adjust_goal_pose(ideal_to_goal, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
-            }
+            //if(pow(pow((x_pos),2)+ pow((y_pos),2) + pow((z_pos), 2),0.5) > tol_transition || pow(pow((roll),2)+ pow((pitch),2) + pow((yaw), 2),0.5) > angle_tol_transition){
+              //  adj_ideal_to_goal = adjust_goal_pose(ideal_to_goal, x_allow_lazy, y_allow_lazy, z_allow_lazy, xrot_allow_lazy, yrot_allow_lazy, zrot_allow_lazy);
+            //}else{
+             //   adj_ideal_to_goal = adjust_goal_pose(ideal_to_goal, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
+            //}
 
-            // updating the face to goal
-            face_to_goal = face_to_ideal*adj_ideal_to_goal;
             base_to_goal = base_to_face*face_to_goal;
-
-            q_base_to_face = face_to_goal.getRotation();
-            stamped_face_to_goal_adj.transform.rotation.x = q_base_to_face.x();
-            stamped_face_to_goal_adj.transform.rotation.y = q_base_to_face.y();
-            stamped_face_to_goal_adj.transform.rotation.z = q_base_to_face.z();
-            stamped_face_to_goal_adj.transform.rotation.w = q_base_to_face.w();
-            stamped_face_to_goal_adj.transform.translation.x = face_to_goal.getOrigin()[0];
-            stamped_face_to_goal_adj.transform.translation.y = face_to_goal.getOrigin()[1];
-            stamped_face_to_goal_adj.transform.translation.z = face_to_goal.getOrigin()[2];
-
 
             q_base_to_face = base_to_face.getRotation();
             stamped_base_to_face.transform.rotation.x = q_base_to_face.x();
             stamped_base_to_face.transform.rotation.y = q_base_to_face.y();
             stamped_base_to_face.transform.rotation.z = q_base_to_face.z();
             stamped_base_to_face.transform.rotation.w = q_base_to_face.w();
-
             stamped_base_to_face.transform.translation.x = base_to_face.getOrigin()[0];
             stamped_base_to_face.transform.translation.y = base_to_face.getOrigin()[1];
             stamped_base_to_face.transform.translation.z = base_to_face.getOrigin()[2];
 
-            measurements.at<double>(0) = y_pos;             // x
-            measurements.at<double>(1) = -x_pos;            // y
-            measurements.at<double>(2) = -z_pos;            // z
-            measurements.at<double>(3) = -yaw*M_PI/180;     // yaw
-            measurements.at<double>(4) = -pitch*M_PI/180;   // pitch
-            measurements.at<double>(5) = -roll*M_PI/180;    // roll
+            q_base_to_face = base_to_face_raw.getRotation();
+            stamped_base_to_face_raw.transform.rotation.x = q_base_to_face.x();
+            stamped_base_to_face_raw.transform.rotation.y = q_base_to_face.y();
+            stamped_base_to_face_raw.transform.rotation.z = q_base_to_face.z();
+            stamped_base_to_face_raw.transform.rotation.w = q_base_to_face.w();
+            stamped_base_to_face_raw.transform.translation.x = base_to_face_raw.getOrigin()[0];
+            stamped_base_to_face_raw.transform.translation.y = base_to_face_raw.getOrigin()[1];
+            stamped_base_to_face_raw.transform.translation.z = base_to_face_raw.getOrigin()[2];
 
-
-
-
-            myfile << (ros::Time::now() - start_time) << "," <<  stamped_base_to_face.transform.translation.x;
-            myfile << "," <<  stamped_base_to_face.transform.translation.y << "," <<  stamped_base_to_face.transform.translation.z;
-            myfile << "," <<  stamped_base_to_face.transform.rotation.x << "," <<  stamped_base_to_face.transform.rotation.y;
-            myfile << "," <<  stamped_base_to_face.transform.rotation.z << "," <<  stamped_base_to_face.transform.rotation.w;
-            myfile << "\n";
-
-            rate.sleep();
-        }
-
-        KF.predict();   // First predict, to update the internal statePre variable
-        cv::Mat estimated = KF.correct(measurements);
-        if (faces.size() > 0){
             if(data_possibly_corrupt == true){
                 // set the data possibly corrupt as false for next loop and set the previous positions to be the current positions
                 data_possibly_corrupt = false;
@@ -484,6 +538,7 @@ int main(int argc, char **argv){
                 // Send the unfiltered/unadjusted goal
                 face_and_goal.clear();
                 face_and_goal.push_back(stamped_base_to_face);
+                face_and_goal.push_back(stamped_base_to_face_raw);
                 face_and_goal.push_back(stamped_face_to_goal);
                 tfb.sendTransform(face_and_goal);
             }
@@ -491,49 +546,56 @@ int main(int argc, char **argv){
                 // Send the unfiltered/unadjusted goal
                 face_and_goal.clear();
                 face_and_goal.push_back(stamped_base_to_face);
-                face_and_goal.push_back(stamped_face_to_goal);
+                face_and_goal.push_back(stamped_base_to_face_raw);
+                //face_and_goal.push_back(stamped_face_to_goal);
                 tfb.sendTransform(face_and_goal);
                 // Set data as possibly corrupt to true and don't hold on to this data as previous
                 data_possibly_corrupt = true;
             }else{
                 // The eef_to_face transform is updated based on the values calculated using the face pose detector
-                q_eef_to_face.setRPY(estimated.at<double>(9),estimated.at<double>(10), estimated.at<double>(11));
-                eef_to_face.setRotation(q_eef_to_face);
-                eef_to_face.setOrigin(tf2::Vector3(estimated.at<double>(0),estimated.at<double>(1), estimated.at<double>(2)));
-
+                //q_eef_to_face.setRPY(estimated.at<double>(9),estimated.at<double>(10), estimated.at<double>(11));
+                //eef_to_face.setRotation(q_eef_to_face);
+                //cam_to_face.setRotation(q_eef_to_face);
+                //eef_to_face.setOrigin(tf2::Vector3(estimated.at<double>(0),estimated.at<double>(1), estimated.at<double>(2)));
+                //cam_to_face.setOrigin(tf2::Vector3(estimated.at<double>(0),estimated.at<double>(1), estimated.at<double>(2)));
                 // The transform from the base to the face is updated
-                base_to_face = base_to_eef*eef_to_face;
+                // Previosly: base_to_face = base_to_eef*eef_to_face;
+                //base_to_face = base_to_eef*eef_to_cam*cam_to_face;
 
-                q_base_to_face = base_to_face.getRotation();
-                stamped_base_to_face_filtered.transform.rotation.x = q_base_to_face.x();
-                stamped_base_to_face_filtered.transform.rotation.y = q_base_to_face.y();
-                stamped_base_to_face_filtered.transform.rotation.z = q_base_to_face.z();
-                stamped_base_to_face_filtered.transform.rotation.w = q_base_to_face.w();
+                //q_base_to_face = base_to_face.getRotation();
+                //stamped_base_to_face_filtered.transform.rotation.x = q_base_to_face.x();
+                //stamped_base_to_face_filtered.transform.rotation.y = q_base_to_face.y();
+                //stamped_base_to_face_filtered.transform.rotation.z = q_base_to_face.z();
+                //stamped_base_to_face_filtered.transform.rotation.w = q_base_to_face.w();
 
-                stamped_base_to_face_filtered.transform.translation.x = base_to_face.getOrigin()[0];
-                stamped_base_to_face_filtered.transform.translation.y = base_to_face.getOrigin()[1];
-                stamped_base_to_face_filtered.transform.translation.z = base_to_face.getOrigin()[2];
+                //stamped_base_to_face_filtered.transform.translation.x = base_to_face.getOrigin()[0];
+                //stamped_base_to_face_filtered.transform.translation.y = base_to_face.getOrigin()[1];
+                //stamped_base_to_face_filtered.transform.translation.z = base_to_face.getOrigin()[2];
 
 
                 face_and_goal.clear();
                 face_and_goal.push_back(stamped_base_to_face);
+                face_and_goal.push_back(stamped_base_to_face_raw);
                 //face_and_goal.push_back(stamped_base_to_face_filtered);
                 face_and_goal.push_back(stamped_face_to_goal);
-                face_and_goal.push_back(stamped_face_to_goal_adj);
+                //face_and_goal.push_back(stamped_face_to_goal_adj);
                 tfb.sendTransform(face_and_goal);
                 // Set the previous face pose to be the current for the next loop
                 x_pos_prev = x_pos;
                 y_pos_prev = y_pos;
                 z_pos_prev = z_pos;
+
             }
+            base_to_face_prev = base_to_face;
+            rate.sleep();
 
         }
- //press esc to end
+        ros::spinOnce();
+        //press esc to end
         cv::imshow("demo", temp);
         unsigned char key = cv::waitKey(1);
         if (key == 27)
             {
-            myfile.close();
             break;
             }
           //r.sleep();
@@ -601,6 +663,77 @@ void initKalmanFilter(cv::KalmanFilter &KF, int nStates, int nMeasurements, int 
   KF.measurementMatrix.at<double>(4,10) = 1; // pitch
   KF.measurementMatrix.at<double>(5,11) = 1; // yaw
 }
+
+
+void adjust_face_pose(tf2::Transform &cam_to_face, tf2::Transform &cam_to_face_prev, float &x_allowable, float &y_allowable, float &z_allowable, float &roll_allowable, float &pitch_allowable, float &yaw_allowable){
+    tf2::Quaternion quat;
+    quat = cam_to_face.getRotation();
+    tf2::Matrix3x3 m_cam_to_face(quat);
+    double cam_to_face_roll, cam_to_face_pitch, cam_to_face_yaw;
+    m_cam_to_face.getRPY(cam_to_face_yaw, cam_to_face_pitch, cam_to_face_roll);
+
+    quat = cam_to_face_prev.getRotation();
+    tf2::Matrix3x3 m_cam_to_face_prev(quat);
+    double cam_to_face_prev_roll, cam_to_face_prev_pitch, cam_to_face_prev_yaw;
+    m_cam_to_face_prev.getRPY(cam_to_face_prev_yaw, cam_to_face_prev_pitch, cam_to_face_prev_roll);
+
+    error_count.sensor_values.clear();
+    // Adjusting the transform based on whether the threshold is exceeded for all 6-DOF
+    double x_adjusted, y_adjusted, z_adjusted, roll_adjusted, pitch_adjusted, yaw_adjusted;
+    if(abs(cam_to_face.getOrigin()[0] - cam_to_face_prev.getOrigin()[0]) > x_allowable){
+        error_count.sensor_values.push_back(1);
+        x_adjusted = cam_to_face.getOrigin()[0];
+    }else{
+        x_adjusted = cam_to_face_prev.getOrigin()[0];
+        error_count.sensor_values.push_back(0);
+    }
+    if(abs(cam_to_face.getOrigin()[1] - cam_to_face_prev.getOrigin()[1]) > y_allowable){
+        y_adjusted = cam_to_face.getOrigin()[1];
+        error_count.sensor_values.push_back(1);
+    }else{
+        y_adjusted = cam_to_face_prev.getOrigin()[1];
+        error_count.sensor_values.push_back(0);
+    }
+    if(abs(cam_to_face.getOrigin()[2] - cam_to_face_prev.getOrigin()[2]) > z_allowable){
+        z_adjusted = cam_to_face.getOrigin()[2];
+        error_count.sensor_values.push_back(1);
+    }else{
+        z_adjusted = cam_to_face_prev.getOrigin()[2];
+        error_count.sensor_values.push_back(0);
+    }
+    if(abs(cam_to_face_roll - cam_to_face_prev_roll) > roll_allowable){
+        roll_adjusted = cam_to_face_roll;
+        error_count.sensor_values.push_back(1);
+    }else{
+        roll_adjusted = cam_to_face_prev_roll;
+        error_count.sensor_values.push_back(0);
+    }
+    if(abs(cam_to_face_pitch - cam_to_face_prev_pitch) > pitch_allowable){
+        pitch_adjusted = cam_to_face_pitch;
+        error_count.sensor_values.push_back(1);
+    }else{
+        pitch_adjusted = cam_to_face_prev_pitch;
+        error_count.sensor_values.push_back(0);
+    }
+    if(abs(cam_to_face_yaw - cam_to_face_prev_yaw) > yaw_allowable){
+        if(lazy_adjust == 0){
+            yaw_adjusted = cam_to_face_yaw/2;
+        }else{
+            yaw_adjusted = cam_to_face_yaw;
+        }
+        error_count.sensor_values.push_back(1);
+    }else{
+        yaw_adjusted = cam_to_face_prev_yaw;
+        error_count.sensor_values.push_back(0);
+    }
+
+    error_count.sensor_values.push_back(lazy_adjust);
+    //Will need to do for every case but will start testing with just this one
+    cam_to_face.setOrigin(tf2::Vector3(x_adjusted, y_adjusted, z_adjusted));
+    quat.setRPY(yaw_adjusted, pitch_adjusted, roll_adjusted);
+    cam_to_face.setRotation(quat);
+}
+
 
 // I need to determine what roll, pitch, and yaw correspond to in terms of x, y, and z
 tf2::Transform adjust_goal_pose(tf2::Transform &ideal_to_goal, float &x_allowable, float &y_allowable, float &z_allowable, float &roll_allowable, float &pitch_allowable, float &yaw_allowable){

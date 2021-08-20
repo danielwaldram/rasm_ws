@@ -65,11 +65,10 @@ find_package( PCL REQUIRED)
 # )
 
 ## Generate services in the 'srv' folder
-# add_service_files(
-#   FILES
-#   Service1.srv
-#   Service2.srv
-# )
+add_service_files(
+   FILES
+   rasm_settings.srv
+)
 
 ## Generate actions in the 'action' folder
 # add_action_files(
@@ -79,10 +78,10 @@ find_package( PCL REQUIRED)
 # )
 
 ## Generate added messages and services with any dependencies listed here
-# generate_messages(
-#   DEPENDENCIES
-#   std_msgs  # Or other packages containing msgs
-# )
+generate_messages(
+   DEPENDENCIES
+   std_msgs  # Or other packages containing msgs
+)
 
 ################################################
 ## Declare ROS dynamic reconfigure parameters ##
@@ -159,6 +158,8 @@ add_subdirectory(/home/daniel/dlib-19.21/dlib dlib_build)
 
 add_executable(rasm_face_pose_estimation src/rasm_face_pose_estimation.cpp)
 target_link_libraries(rasm_face_pose_estimation ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} dlib::dlib)
+add_executable(rasm_face_pose_estimation_w_rasm_settings src/rasm_face_pose_estimation_w_rasm_settings.cpp)
+target_link_libraries(rasm_face_pose_estimation_w_rasm_settings ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} dlib::dlib)
 add_executable(webcam_face_pose_ex src/webcam_face_pose_ex.cpp)
 target_link_libraries(webcam_face_pose_ex ${catkin_LIBRARIES} ${OpenCV_LIBRARIES} dlib::dlib)
 add_executable(webcam_pub_cpp src/webcam_pub_cpp.cpp)

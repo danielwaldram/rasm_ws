@@ -21,7 +21,7 @@ def signal_handler(signal, frame):
 
 
 class MoveGroupPythonInterfaceClass(object):
-    def __init__(self):
+    def __init__(self, max_velocity):
         super(MoveGroupPythonInterfaceClass, self).__init__()
         #First initializing moveit commander and a rospy node
         moveit_commander.roscpp_initialize(sys.argv)
@@ -29,7 +29,7 @@ class MoveGroupPythonInterfaceClass(object):
         self.pub = rospy.Publisher('goal_pose_data', Pose, queue_size=10)
 
         rospy.init_node('move_group_python_interface_test', anonymous=True)
-        self.r = rospy.Rate(0.6)
+        self.r = rospy.Rate(10)  #(0.6)
         #Instantiate a robotcommander object. This object is the outer-level interface to the robot:
         robot = moveit_commander.RobotCommander()
         #Instantiate a PlanningScene interface object. This object is an interface to the world surrounding the robot
@@ -78,6 +78,7 @@ class MoveGroupPythonInterfaceClass(object):
         self.euler_current = tf.transformations.euler_from_quaternion((0, 0, 0, 1))
         self.euler_last = tf.transformations.euler_from_quaternion((0, 0, 0, 1))
         self.new_plan = True
+        self.max_velocity = float(max_velocity)
 
     # The error is checked only to see if a new plan needs to be made, the face tracking node is where the goal pose is adjusted based on the screen location error
     def check_error(self, current_pose):
@@ -99,7 +100,7 @@ class MoveGroupPythonInterfaceClass(object):
 
     def lookup_goal_pose(self):
         try:
-            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose_adj",rospy.Time(0),rospy.Duration(2.0))
+            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose",rospy.Time(0),rospy.Duration(2.0))
             if (rospy.Time.now() - rospy.Time(goal_from_base.header.stamp.secs)) > (rospy.Duration(20)):
                 return False
             return True
@@ -224,9 +225,12 @@ class MoveGroupPythonInterfaceClass(object):
             self.pan_right_to_center()
 
     def eef_goal(self):
+        print("Max Velocity Scaling:")
+        print(self.max_velocity)
+        self.group.set_max_velocity_scaling_factor(self.max_velocity)
         # The transform between the rasm base and the goal pose is determined
         try:
-            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose_adj",rospy.Time(0),rospy.Duration(2.0))
+            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose",rospy.Time(0),rospy.Duration(2.0))
         except tf.LookupException:
             #If the goal pose hasn't been published yet, the RASM will go into search mode
             print("FACE POSE NEVER PUBLISHED: STARTING SEARCH MODE")
@@ -253,7 +257,7 @@ class MoveGroupPythonInterfaceClass(object):
         List_of_floats = [goal_from_base.transform.translation.x, goal_from_base.transform.translation.y, goal_from_base.transform.translation.z, goal_from_base.transform.rotation.x, goal_from_base.transform.rotation.y, goal_from_base.transform.rotation.z]
 
         self.check_error(my_pose)
-        if self.new_plan:              # if there is a new position to plan to then a now plan is set and planned to
+        if self.new_plan:              # if there is a new position to plan to then a new plan is set and planned to
             self.new_plan = False
             self.last_pose = my_pose   # last pose is set to the current pose only if the last pose is the one planned to
             self.group.set_pose_target(my_pose)
@@ -271,7 +275,7 @@ class MoveGroupPythonInterfaceClass(object):
 def main():
     signal.signal(signal.SIGINT, signal_handler)
 
-    tutorial = MoveGroupPythonInterfaceClass()
+    tutorial = MoveGroupPythonInterfaceClass(sys.argv[1])
 
     #tutorial.search_pose()
 

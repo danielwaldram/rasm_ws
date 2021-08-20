@@ -1,6 +1,6 @@
 <?xml version="1.0"?>
 <launch>
-    <node name="rasm_face_pose_estimation" pkg="face_pose_estimation" type="rasm_face_pose_estimation" >
+    <node name="rasm_face_pose_estimation_w_rasm_settings" pkg="face_pose_estimation" type="rasm_face_pose_estimation_w_rasm_settings" >
     </node>
     <node name="move_group_python_interface" pkg="beginner_tutorials" type="move_group_python_interface.py" args="$(arg a)">
     </node>

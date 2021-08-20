@@ -27,6 +27,8 @@ MyRobot::MyRobot(ros::NodeHandle& nh) : nh_(nh) {
 	pub_p_5_setpoint = nh.advertise<std_msgs::Float64>("/p_5_pid/setpoint",1);
 	pub_r_6_state = nh.advertise<std_msgs::Float64>("/r_6_pid/state",1);
 	pub_r_6_setpoint = nh.advertise<std_msgs::Float64>("/r_6_pid/setpoint",1);
+	// FOR VELOCITY TEST
+	pub_velocity_filter = nh.advertise<beginner_tutorials::pid_effort_commands>("velocity_filtered",1);
 	sub = nh.subscribe("hardware_joint_positions",1, &MyRobot::callback_joint_positions, this);
 	pid_subscriber = nh.subscribe("pid_effort_commands",1, &MyRobot::callback_pid_values ,this);//sub = nh.subscribe("/elbow_pid/setpoint",10, &MyRobot::,this);
 
