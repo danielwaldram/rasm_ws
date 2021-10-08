@@ -40,9 +40,9 @@
     </node>
     <node name="pid_controller" pkg="pid" type="controller" ns="p_5_pid" output="screen" >
         <param name="node_name" value="p_5_pid" />
-        <param name="Kp" value="6000.0" />
-        <param name="Kd" value="40.0" />
-        <param name="Ki" value="600.0" />
+        <param name="Kp" value="2500.0" />
+        <param name="Kd" value="25.0" />
+        <param name="Ki" value="400.0" />
         <param name="max_loop_frequency" value="225.0" />
         <param name="min_loop_frequency" value="225.0" />
     </node>

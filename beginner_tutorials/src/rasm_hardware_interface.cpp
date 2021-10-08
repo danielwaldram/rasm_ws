@@ -133,12 +133,12 @@ void MyRobot::update(const ros::TimerEvent& e) {
     double Vc_array[2] = {0,0};
 	//ROS_INFO("I heard:[%f ,%f ,%f ,%f ,%f ,%f ] /n", joint_position_command_[0],joint_position_command_[1],joint_position_command_[2],joint_position_command_[3],joint_position_command_[4],joint_position_command_[5]);
 	//ROS_INFO("  v:[%f ,%f ,%f ,%f ,%f ,%f ] ", joint_velocity_command_[0],joint_velocity_command_[1],joint_velocity_command_[2],joint_velocity_command_[3],joint_velocity_command_[4],joint_velocity_command_[5]);
-	pub_z_1_setpoint.publish(joint_position_command_[0]);
-	pub_shoulder_setpoint.publish(joint_position_command_[1]);
-	pub_elbow_setpoint.publish(joint_position_command_[2]);
-	pub_y_4_setpoint.publish(joint_position_command_[3]);
-	pub_p_5_setpoint.publish(joint_position_command_[4]);
-	pub_r_6_setpoint.publish(joint_position_command_[5]);
+        pub_z_1_setpoint.publish(joint_position_command_[0]);
+        pub_shoulder_setpoint.publish(joint_position_command_[1]);
+        pub_elbow_setpoint.publish(joint_position_command_[2]);
+        pub_y_4_setpoint.publish(joint_position_command_[3]);
+        pub_p_5_setpoint.publish(joint_position_command_[4]);
+        pub_r_6_setpoint.publish(joint_position_command_[5]);
 
 	//feedback_calc(Vc_array);
 	feedforward_torque(Vc_array);
@@ -173,16 +173,17 @@ void MyRobot::write(ros::Duration elapsed_time, double *Vc_array){
 	//effort_values.sensor_values.push_back((int)Vc_feedforward[0]);
 	//effort_values.sensor_values.push_back((int)Vc_feedforward[1]);
 	// Including the torque required to overcome colomb friction for the yaw joint
-	if(joint_velocity_command_[3] > 0){
-        effort_values.sensor_values.push_back((int)pid_commands[3] + 400);
-	}else if(joint_velocity_command_[3] < 0){
-         effort_values.sensor_values.push_back((int)pid_commands[3] - 400);
-	}else{
-        effort_values.sensor_values.push_back((int)pid_commands[3]);
-	}
-	for(int i = 4; i < 6; i++){
+	//if(joint_velocity_command_[3] > 0){
+     //   effort_values.sensor_values.push_back((int)pid_commands[3] + 400);
+	//}else if(joint_velocity_command_[3] < 0){
+      //   effort_values.sensor_values.push_back((int)pid_commands[3] - 400);
+	//}else{
+     //   effort_values.sensor_values.push_back((int)pid_commands[3]);
+	//}
+	for(int i = 3; i < 6; i++){
 		effort_values.sensor_values.push_back((int)pid_commands[i]);
 	}
+
 
 	pub.publish(effort_values);
 	effortJointSaturationInterface.enforceLimits(elapsed_time);

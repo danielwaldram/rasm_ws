@@ -62,7 +62,7 @@ public:
     current_position[2] = (msg.sensor_values[2] - 2101)*2*M_PI/4095;
     current_position[3] = (msg.sensor_values[3]- 2164)*2*M_PI/4095;
     current_position[4] = (msg.sensor_values[4] - 3359)*2*M_PI/4095;
-    current_position[5] = -(msg.sensor_values[5] - 2240)*M_PI/4095;
+    current_position[5] = -(msg.sensor_values[5] - 2240)*2*M_PI/4095;
 
     low_pass_filter();
   };
@@ -118,7 +118,7 @@ protected:
   double current_position[6] = {0,0,0,0,0,0};
   double velocity_filter_test[6] = {0,0,0,0,0,0};
   double velocity_filter_test_prev[6] = {0,0,0,0,0,0};
-
+  bool zero_position = 1;
     void velocity_calc(const ros::Duration& elapsed_time_){
         joint_velocity_[1] = (joint_position_[1] - previous_position[1])/elapsed_time_.toSec();//Shoulder velocity
         joint_velocity_[2] = (joint_position_[2] - previous_position[2])/elapsed_time_.toSec();//Elbow velocity
@@ -320,12 +320,21 @@ protected:
             velocity_filter_test_prev[i] = velocity_filter_test[i];
             velocity_filtered.commands.push_back(velocity_filter_test[i]);
         }
-        pub_z_1_state.publish(joint_position_[0]);
-        pub_elbow_state.publish(joint_position_[2]);
-        pub_shoulder_state.publish(joint_position_[1]);
-        pub_y_4_state.publish(joint_position_[3]);
-        pub_p_5_state.publish(joint_position_[4]);
-        pub_r_6_state.publish(joint_position_[5]);
+        // This blocks the position from being sent to the PID if the robot is commanded to the
+        //  zero position to prevent the arm from going to that position at startup
+        for(int i = 0; i<6; i++){
+            if(joint_position_command_[i]!= 0){
+                zero_position = 0;
+            }
+        }
+        if(zero_position == 0){
+            pub_z_1_state.publish(joint_position_[0]);
+            pub_elbow_state.publish(joint_position_[2]);
+            pub_shoulder_state.publish(joint_position_[1]);
+            pub_y_4_state.publish(joint_position_[3]);
+            pub_p_5_state.publish(joint_position_[4]);
+            pub_r_6_state.publish(joint_position_[5]);
+        }
         pub_velocity_filter.publish(velocity_filtered);
     }
 

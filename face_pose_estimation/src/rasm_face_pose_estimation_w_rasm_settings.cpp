@@ -140,10 +140,10 @@ int main(int argc, char **argv){
   stamped_face_to_goal_adj.header.frame_id = "face_pose";
   stamped_face_to_goal_adj.child_frame_id = "goal_pose_adj";
   // 0.1m (~4") offset in the x direction accounts for the camera being mounted above the screen.
-  float eef_to_cam_x = 0.121;
+  float eef_to_cam_x = 0.086;//0.121 for the tablet; 0.086 for the surface
   stamped_face_to_goal.transform.translation.x = screen_vertical_shift - eef_to_cam_x;
   stamped_face_to_goal.transform.translation.y = 0.0;
-  float eef_to_cam_z = -0.136;
+  float eef_to_cam_z = -0.145;//-0.136 for the tablet; -0.145 for the surface
   // 0.55m offset in the z direction is the viewing distance from users face to screen
   stamped_face_to_goal.transform.translation.z = screen_distance - eef_to_cam_z;
   stamped_face_to_goal.transform.rotation.x = q_eef_to_face.x();
@@ -183,7 +183,7 @@ int main(int argc, char **argv){
   float z_allow_lazy = 0.05;
   float xrot_allow_lazy = 0.1;
   float yrot_allow_lazy = 0.15;
-  float zrot_allow_lazy = 0.2;
+  float zrot_allow_lazy = 0.25;
 
   float tol_transition = 0.75;
   float angle_tol_transition = 20;
@@ -299,8 +299,7 @@ int main(int argc, char **argv){
         //display window
         cv::namedWindow( "demo", cv::WINDOW_NORMAL);
         // camera frame grabbed each loop
-        cv::Mat temp;
-
+        cv::Mat temp, color_temp;
     //Loop until the escape key is pressed.
     while (1)
     {
@@ -317,10 +316,10 @@ int main(int argc, char **argv){
         cap >> temp;
         cap >> temp;
         cap >> temp;
-        cap >> temp;
-
-        dlib::cv_image<dlib::bgr_pixel> cimg(temp);
-
+        cap >> color_temp;
+        cv::cvtColor(color_temp, temp, cv::COLOR_BGR2GRAY);
+        //dlib::cv_image<dlib::bgr_pixel> cimg(temp);
+        dlib::cv_image<unsigned char> cimg(temp);
         // Detect faces
         std::vector<dlib::rectangle> faces = detector(cimg);
 

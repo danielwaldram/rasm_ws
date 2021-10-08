@@ -11,6 +11,7 @@ import moveit_msgs.msg
 import geometry_msgs.msg
 from math import pi
 from std_msgs.msg import String
+from std_srvs.srv import Empty
 from moveit_commander.conversions import pose_to_list
 from geometry_msgs.msg import Pose
 import sys, signal
@@ -29,6 +30,8 @@ class MoveGroupPythonInterfaceClass(object):
         self.pub = rospy.Publisher('goal_pose_data', Pose, queue_size=10)
 
         rospy.init_node('move_group_python_interface_test', anonymous=True)
+        self.auto_mode = False
+        serv = rospy.Service('auto_mode', Empty, self.handle_auto_mode)
         self.r = rospy.Rate(10)  #(0.6)
         #Instantiate a robotcommander object. This object is the outer-level interface to the robot:
         robot = moveit_commander.RobotCommander()
@@ -79,6 +82,16 @@ class MoveGroupPythonInterfaceClass(object):
         self.euler_last = tf.transformations.euler_from_quaternion((0, 0, 0, 1))
         self.new_plan = True
         self.max_velocity = float(max_velocity)
+
+    def handle_auto_mode(self, req):
+        if self.auto_mode:
+            print("TRUE")
+            self.auto_mode = False
+        else:
+            print("FALSE")
+            self.auto_mode = True
+        return []
+
 
     # The error is checked only to see if a new plan needs to be made, the face tracking node is where the goal pose is adjusted based on the screen location error
     def check_error(self, current_pose):
@@ -179,27 +192,27 @@ class MoveGroupPythonInterfaceClass(object):
 
     def search_mode(self):
         #First the RASM pans down because the screen looking over someone sitting up is the most common issue
-        self.pan_down()
+        #self.pan_down()
         #RASM screen pans back up
-        self.pan_up()
+        #self.pan_up()
         # If the goal pose has been found the function will be exited
-        if self.lookup_goal_pose(): return
+        #if self.lookup_goal_pose(): return
         # First the RASM will pan left and right looking for a face
-        self.pan_left()
+        #self.pan_left()
         # If the goal pose has been found the function will be exited
-        if self.lookup_goal_pose(): return
+        #if self.lookup_goal_pose(): return
         # Panning to the other side
-        self.pan_right()
+        #self.pan_right()
         # If the goal pose has been found the function will be exited
-        if self.lookup_goal_pose(): return
-        self.pan_right_to_center()
-        if self.lookup_goal_pose(): return
+        #if self.lookup_goal_pose(): return
+        #self.pan_right_to_center()
+        #if self.lookup_goal_pose(): return
 
         # Move the screen back by 10 inches from the current position
         self.shift_screen_back()
         if self.lookup_goal_pose(): return
 
-        # RASM pans right and left again
+        # RASM pans right and left
         self.pan_left()
         # If the goal pose has been found the function will be exited
         if self.lookup_goal_pose(): return
@@ -234,18 +247,16 @@ class MoveGroupPythonInterfaceClass(object):
         except tf.LookupException:
             #If the goal pose hasn't been published yet, the RASM will go into search mode
             print("FACE POSE NEVER PUBLISHED: STARTING SEARCH MODE")
-            self.search_mode()
+            # Only go into search mode if auto mode has been selected by the user
+            if self.auto_mode:
+                self.search_mode()
             return
-
-        if (rospy.Time.now() - rospy.Time(goal_from_base.header.stamp.secs)) > (rospy.Duration(20)):
+        # Go into search mode if the face pose has not updated in 5 seconds and it is in automode
+        if (rospy.Time.now() - rospy.Time(goal_from_base.header.stamp.secs)) > (rospy.Duration(5)) and self.auto_mode:
             print("NO TRANSFORM FOUND")
             self.search_mode()
             return
-
-
-        #print("base to screen")
-
-        #print(goal_from_base)
+        
         my_pose = Pose()
         my_pose.position.x = goal_from_base.transform.translation.x
         my_pose.position.y = goal_from_base.transform.translation.y
@@ -256,8 +267,11 @@ class MoveGroupPythonInterfaceClass(object):
         my_pose.orientation.w = goal_from_base.transform.rotation.w
         List_of_floats = [goal_from_base.transform.translation.x, goal_from_base.transform.translation.y, goal_from_base.transform.translation.z, goal_from_base.transform.rotation.x, goal_from_base.transform.rotation.y, goal_from_base.transform.rotation.z]
 
+        # See if the new pose is different from the last
         self.check_error(my_pose)
-        if self.new_plan:              # if there is a new position to plan to then a new plan is set and planned to
+
+        # Plan to a new goal if there is one to go to and the robot is in auto mode
+        if self.new_plan and self.auto_mode:              # if there is a new position to plan to then a new plan is set and planned to
             self.new_plan = False
             self.last_pose = my_pose   # last pose is set to the current pose only if the last pose is the one planned to
             self.group.set_pose_target(my_pose)
@@ -268,6 +282,7 @@ class MoveGroupPythonInterfaceClass(object):
         #self.group.set_planning_time(5)
         #raw_input("New Plan")
         self.pub.publish(my_pose)
+        #rospy.spin()
         self.r.sleep()
 
 
