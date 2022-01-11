@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<launch>
+    <node name="effort_command_compiler_ik_node" pkg="beginner_tutorials" type="effort_command_compiler_ik_node" >
+    </node>
+    <include file="$(find rasm_moveit3)/launch/PID_IK.launch">
+    </include>
+</launch>

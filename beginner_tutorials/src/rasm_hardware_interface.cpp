@@ -173,16 +173,17 @@ void MyRobot::write(ros::Duration elapsed_time, double *Vc_array){
 	//effort_values.sensor_values.push_back((int)Vc_feedforward[0]);
 	//effort_values.sensor_values.push_back((int)Vc_feedforward[1]);
 	// Including the torque required to overcome colomb friction for the yaw joint
-	//if(joint_velocity_command_[3] > 0){
-     //   effort_values.sensor_values.push_back((int)pid_commands[3] + 400);
-	//}else if(joint_velocity_command_[3] < 0){
-      //   effort_values.sensor_values.push_back((int)pid_commands[3] - 400);
-	//}else{
-     //   effort_values.sensor_values.push_back((int)pid_commands[3]);
-	//}
-	for(int i = 3; i < 6; i++){
+	if(pid_commands[3] > 0){
+        effort_values.sensor_values.push_back((int)pid_commands[3] + 300);
+	}else if(pid_commands[3] < 0){
+        effort_values.sensor_values.push_back((int)pid_commands[3] - 300);
+	}else{
+        effort_values.sensor_values.push_back((int)pid_commands[3]);
+	}
+	for(int i = 4; i < 6; i++){
 		effort_values.sensor_values.push_back((int)pid_commands[i]);
 	}
+
 
 
 	pub.publish(effort_values);

@@ -27,6 +27,7 @@
 void adjust_face_pose(tf2::Transform &cam_to_face, tf2::Transform &cam_to_face_prev, float &x_allowable, float &y_allowable, float &z_allowable, float &roll_allowable, float &pitch_allowable, float &yaw_allowable);
 void initKalmanFilter(cv::KalmanFilter &KF, int nStates, int nMeasurements, int nInputs, double dt);
 tf2::Transform adjust_goal_pose(tf2::Transform &ideal_to_goal, float &x_allowable, float &y_allowable, float &z_allowable, float &xrot_allow, float &yrot_allow, float &z_rot_allow);
+double low_pass_filter(double current_val, double prev_val, double alpha, double time_since_call, double loop_rate);
 
 //Intrisics can be calculated using opencv sample code under opencv/sources/samples/cpp/tutorial_code/calib3d
 //Normally, you can also apprximate fx and fy by image width, cx by half image width, cy by half image height instead
@@ -43,9 +44,9 @@ const double centimeter_to_inch_conversion = 1/2.54;
 float screen_distance = 0.70;
 float screen_vertical_shift =  -0.0;
 // The sensitivity of the RASM to movement in the x, y, and z directions as well as rotations
-float x_allow = 0.04;
-float y_allow = 0.04;
-float z_allow = 0.04;
+float x_allow = 0.075;
+float y_allow = 0.075;
+float z_allow = 0.075;
 float xrot_allow = 0.05;   //roll
 float yrot_allow = 0.1;    //pitch
 float zrot_allow = 0.15;    //yaw
@@ -89,7 +90,9 @@ int main(int argc, char **argv){
   ros::Time start_time = ros::Time::now();
   ros::Time pose_time = ros::Time::now();
   ros::Rate rate(hz);
-
+  ros::Time filter_call_time = ros::Time::now();
+  ros::Duration time_since_filter_call(100.0); // This is the time since the low pass filter was called. Initialized as a high value to prevent the initial prev position of 0.0 from having a contribution
+  double yaw_alpha = 0.1;//0.1
   // The broadcaster and listener allow recieving info from and sending info to the tf tree
   tf2_ros::TransformBroadcaster tfb;
   tf2_ros::Buffer tfBuffer;
@@ -189,7 +192,13 @@ int main(int argc, char **argv){
   float angle_tol_transition = 20;
 
   // These variables are used for outlier detection
-  float max_slope = 0.5;    // This is the max change in position allowable between two frames
+  float max_slope = 1.25;    // This is the max change in position allowable between two frames
+  double base_to_face_x_pos_prev = 0.0;  // prev x,y, and z position
+  double base_to_face_y_pos_prev = 0.0;
+  double base_to_face_z_pos_prev = 0.0;
+  double base_to_face_roll_prev = 0.0;
+  double base_to_face_pitch_prev = 0.0;
+  double base_to_face_yaw_prev = 0.0;
   double x_pos_prev = 0.0;  // prev x,y, and z position
   double y_pos_prev = 0.0;
   double z_pos_prev = 0.0;
@@ -303,6 +312,18 @@ int main(int argc, char **argv){
     //Loop until the escape key is pressed.
     while (1)
     {
+        //Clear the buffer by grabbing a few frames
+        //cap >> temp;
+        cap >> temp;
+        cap >> temp;
+        cap >> temp;
+        cap >> temp;
+        //cap >> color_temp;
+        //cv::cvtColor(color_temp, temp, cv::COLOR_BGR2GRAY);
+        dlib::cv_image<dlib::bgr_pixel> cimg(temp);
+        //dlib::cv_image<unsigned char> cimg(temp);
+        // Detect faces
+        std::vector<dlib::rectangle> faces = detector(cimg);
       // The transforms to be sent to the tf tree have thier timestamps updated
       pose_time = ros::Time::now();
       stamped_base_to_face_raw.header.stamp = ros::Time::now();
@@ -312,16 +333,6 @@ int main(int argc, char **argv){
       stamped_base_to_face.header.stamp = ros::Time::now();
       stamped_base_to_face_filtered.header.stamp = ros::Time::now();
       stamped_base_to_eef = tfBuffer.lookupTransform("base_link", "link_r_6", ros::Time(0));
-        //Clear the buffer by grabbing a few frames
-        cap >> temp;
-        cap >> temp;
-        cap >> temp;
-        cap >> color_temp;
-        cv::cvtColor(color_temp, temp, cv::COLOR_BGR2GRAY);
-        //dlib::cv_image<dlib::bgr_pixel> cimg(temp);
-        dlib::cv_image<unsigned char> cimg(temp);
-        // Detect faces
-        std::vector<dlib::rectangle> faces = detector(cimg);
 
         // Find the pose of each face
         if (faces.size() > 0)
@@ -357,8 +368,10 @@ int main(int argc, char **argv){
             //calc pose
             //solvePnP finds an object pse from 3D-2D point correspondences. Function returns the rotation and the translation vectors that transform
             // a 3d point expressed in the object coordinate frame to the camera coordinate frame
+            //cv::Mat inliers;
+            //cv::solvePnPRansac(object_pts, image_pts, cam_matrix, dist_coeffs, rotation_vec, translation_vec, false, 500, 0.01, 0.99, inliers);
             cv::solvePnP(object_pts, image_pts, cam_matrix, dist_coeffs, rotation_vec, translation_vec);
-
+            //std::cout << inliers.rows << std::endl;; //inliers.at<double>(0, 0);
             //reproject points of the cube defined earlier into the image
             cv::projectPoints(reprojectsrc, rotation_vec, translation_vec, cam_matrix, dist_coeffs, reprojectdst);
 
@@ -403,39 +416,62 @@ int main(int argc, char **argv){
                           //show angle result
             //outtext << "X: " << std::setprecision(3) << euler_angle.at<double>(0);
             z_pos = -translation_vec.at<double>(1, 1)/100;
-            outtext << "Distance from camera [m]: " << std::setprecision(3) << z_pos;
-            cv::putText(temp, outtext.str(), cv::Point(50, 40), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
+            outtext << "z position [m]: " << std::setprecision(3) << z_pos;
+            cv::putText(temp, outtext.str(), cv::Point(50, 40), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255));
             outtext.str("");
             x_pos = x_distance/100;
             outtext << "x position [m]: " << std::setprecision(3) << x_pos;
             //outtext << "Y: " << std::setprecision(3) << euler_angle.at<double>(1);
-            cv::putText(temp, outtext.str(), cv::Point(50, 60), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
+            cv::putText(temp, outtext.str(), cv::Point(50, 65), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255));
             outtext.str("");
             //outtext << "Z: " << std::setprecision(3) << euler_angle.at<double>(2);
             y_pos = y_distance/100;
             outtext << "y position [m]: " << std::setprecision(3) << y_pos;
-            cv::putText(temp, outtext.str(), cv::Point(50, 80), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
+            cv::putText(temp, outtext.str(), cv::Point(50, 90), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255));
             outtext.str("");
             //outtext << "rot_vec 1: " << std::setprecision(3) << rotation_vec.at<double>(1, 1);
             double pitch = euler_angle.at<double>(0);
-            outtext << "Pitch [deg]: " << std::setprecision(3) << pitch;
-            cv::putText(temp, outtext.str(), cv::Point(50, 100), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
+            outtext << "pitch [deg]: " << std::setprecision(3) << pitch;
+            cv::putText(temp, outtext.str(), cv::Point(50, 115), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255));
             outtext.str("");
             //outtext << "rot_vec 2: " << std::setprecision(3) << rotation_vec.at<double>(2, 1);
             double yaw = euler_angle.at<double>(1);
-            outtext << "Yaw in [deg]: " << std::setprecision(3) << yaw;
-            cv::putText(temp, outtext.str(), cv::Point(50, 120), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
+            outtext << "yaw [deg]: " << std::setprecision(3) << yaw;
+            cv::putText(temp, outtext.str(), cv::Point(50, 140), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255));
             outtext.str("");
             //outtext << "rot_vec 3: " << std::setprecision(3) << rotation_vec.at<double>(3, 1);
             double roll = euler_angle.at<double>(2);
-            outtext << "Roll in [deg]: " << std::setprecision(3) << roll;
-            cv::putText(temp, outtext.str(), cv::Point(50, 140), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(0, 0, 0));
+            outtext << "roll [deg]: " << std::setprecision(3) << roll;
+            cv::putText(temp, outtext.str(), cv::Point(50, 165), cv::FONT_HERSHEY_SIMPLEX, 0.75, cv::Scalar(255, 255, 255));
             outtext.str("");
             char buffer[100];
+            // z_pos should always be positive because the camera cannot see behind itself. If it isn't then another camera frame is selected by starting the while loop over.
+            // this means previous values won't be updated. The same thing happens if the roll or yaw angles are greater than they should be
+            if(z_pos <= 0 || abs(roll) > 45 || abs(yaw) > 50){
+                std::cout << "data possibly corrupt: skipping frame";
+                image_pts.clear();
+                cv::imshow("demo", temp);
+                unsigned char key = cv::waitKey(1);
+                if (key == 27)
+                {
+                    break;
+                }
+                continue;
+            }
 
-            outtext << buffer;
-            cv::putText(temp, outtext.str(), cv::Point(100, 200), cv::FONT_HERSHEY_SIMPLEX, 1.5, cv::Scalar(255, 255, 255), 3);
-            outtext.str("");
+            //yaw = low_pass_filter(yaw, yaw_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            //pitch = low_pass_filter(pitch, pitch_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was setf
+            //roll = low_pass_filter(roll, roll_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            //x_pos = low_pass_filter(x_pos, x_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            //y_pos = low_pass_filter(y_pos, y_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            //z_pos = low_pass_filter(z_pos, z_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            yaw_prev = yaw;
+            pitch_prev = pitch;
+            roll_prev = roll;
+
+            //outtext << inliers.rows;
+            //cv::putText(temp, outtext.str(), cv::Point(100, 200), cv::FONT_HERSHEY_SIMPLEX, 1.5, cv::Scalar(255, 255, 255), 3);
+            //outtext.str("");
             ////////////////// clear image points ////////////////
             image_pts.clear();
             //Set the new screen in case the service has been called
@@ -496,6 +532,52 @@ int main(int argc, char **argv){
             //recalc base to face based on adjusted values
             base_to_face = base_to_cam*cam_to_face;
 
+            // apply low pass filters
+            time_since_filter_call =  ros::Time::now() - filter_call_time;
+            filter_call_time = ros::Time::now();
+            std::cout << "Time Since Call: " << time_since_filter_call.toSec() << std::endl;
+            std::cout << "dt: " << dt << std::endl;
+
+            // Z position should never be negative as that would be below the floor. If this is the case the while loop breaks so the prev values aren't added to
+            if(base_to_face.getOrigin()[2] <= 0){
+                image_pts.clear();
+                cv::imshow("demo", temp);
+                unsigned char key = cv::waitKey(1);
+                if (key == 27)
+                {
+                    break;
+                }
+                continue;
+            }
+            quat = base_to_face.getRotation();
+            tf2::Matrix3x3 m_base_to_face(quat);
+            double base_to_face_roll, base_to_face_pitch, base_to_face_yaw, base_to_face_x_pos, base_to_face_y_pos, base_to_face_z_pos;
+            m_base_to_face.getRPY(base_to_face_roll, base_to_face_pitch, base_to_face_yaw);
+            std::cout << "Yaw: " << std::endl;
+            base_to_face_yaw = low_pass_filter(base_to_face_yaw, base_to_face_yaw_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            std::cout << "Pitch: " << std::endl;
+            base_to_face_pitch = low_pass_filter(base_to_face_pitch, base_to_face_pitch_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was setf
+            std::cout << "Roll: " << std::endl;
+            base_to_face_roll = low_pass_filter(base_to_face_roll, base_to_face_roll_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            std::cout << "X: " << std::endl;
+            base_to_face_x_pos = low_pass_filter(base_to_face.getOrigin()[0], base_to_face_x_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            std::cout << "Y: " << std::endl;
+            base_to_face_y_pos = low_pass_filter(base_to_face.getOrigin()[1], base_to_face_y_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            std::cout << "Z: " << std::endl;
+            base_to_face_z_pos = low_pass_filter(base_to_face.getOrigin()[2], base_to_face_z_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            base_to_face_yaw_prev = base_to_face_yaw;
+            base_to_face_pitch_prev = base_to_face_pitch;
+            base_to_face_roll_prev = base_to_face_roll;
+            base_to_face_x_pos_prev = base_to_face_x_pos;
+            base_to_face_y_pos_prev = base_to_face_y_pos;
+            base_to_face_z_pos_prev = base_to_face_z_pos;
+
+            base_to_face.setOrigin(tf2::Vector3(base_to_face_x_pos, base_to_face_y_pos, base_to_face_z_pos));
+            quat.setRPY(base_to_face_roll, base_to_face_pitch, base_to_face_yaw);
+            base_to_face.setRotation(quat);
+
+
+
             //base_to_ideal = base_to_face*face_to_ideal;
 
             //ideal_to_goal = base_to_ideal.inverse()*base_to_goal;
@@ -535,19 +617,19 @@ int main(int argc, char **argv){
                 y_pos_prev = y_pos;
                 z_pos_prev = z_pos;
                 // Send the unfiltered/unadjusted goal
-                face_and_goal.clear();
-                face_and_goal.push_back(stamped_base_to_face);
-                face_and_goal.push_back(stamped_base_to_face_raw);
-                face_and_goal.push_back(stamped_face_to_goal);
-                tfb.sendTransform(face_and_goal);
-            }
-            else if(pow(pow((x_pos - x_pos_prev),2)+ pow((y_pos - y_pos_prev),2) + pow((z_pos-z_pos_prev), 2),0.5) > max_slope){
-                // Send the unfiltered/unadjusted goal
-                face_and_goal.clear();
-                face_and_goal.push_back(stamped_base_to_face);
-                face_and_goal.push_back(stamped_base_to_face_raw);
+                //face_and_goal.clear();
+                //face_and_goal.push_back(stamped_base_to_face);
+                //face_and_goal.push_back(stamped_base_to_face_raw);
                 //face_and_goal.push_back(stamped_face_to_goal);
-                tfb.sendTransform(face_and_goal);
+               // tfb.sendTransform(face_and_goal);
+            }
+            else if(pow(pow((x_pos - x_pos_prev),2)+ pow((y_pos - y_pos_prev),2) + pow((z_pos-z_pos_prev), 2),0.1) > max_slope){
+                // Send the unfiltered/unadjusted goal
+                //face_and_goal.clear();
+                //face_and_goal.push_back(stamped_base_to_face);
+                //face_and_goal.push_back(stamped_base_to_face_raw);
+                //face_and_goal.push_back(stamped_face_to_goal);
+                //tfb.sendTransform(face_and_goal);
                 // Set data as possibly corrupt to true and don't hold on to this data as previous
                 data_possibly_corrupt = true;
             }else{
@@ -782,3 +864,16 @@ tf2::Transform adjust_goal_pose(tf2::Transform &ideal_to_goal, float &x_allowabl
     return adj_ideal_to_goal;
 }
 
+double low_pass_filter(double current_val, double prev_val, double alpha, double time_since_call, double loop_rate){
+    std::cout << "Raw Value: " << current_val;
+    std::cout << ", Prev Value: " << prev_val;
+    alpha = alpha*time_since_call/loop_rate;
+    if (alpha > 1.0){
+        alpha = 1.0;
+    }
+    std::cout << ", Time scaled alpha: " << alpha;
+    double new_val;
+    new_val = alpha*current_val + (1 - alpha)*prev_val;
+    std::cout << ", Filtered Value: " << new_val << std::endl;
+    return new_val;
+  }

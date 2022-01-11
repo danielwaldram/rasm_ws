@@ -1,0 +1,46 @@
+<launch>
+    <node name="ik_pid_controller" pkg="pid" type="controller" ns="elbow_3_pid" output="screen" >
+        <param name="node_name" value="elbow_3_pid" />
+        <param name="Kp" value="1200.0" />
+        <param name="Kd" value="120.0" />
+        <param name="Ki" value="10.0" />
+	<param name="upper_limit" value="250" />
+      	<param name="lower_limit" value="-250" />
+	<param name="cutoff_frequency" value="30" />
+    </node>
+    <node name="ik_pid_controller" pkg="pid" type="controller" ns="shoulder_2_pid" output="screen" >
+        <param name="node_name" value="shoulder_2_pid" />
+        <param name="Kp" value="1300.0" />
+        <param name="Kd" value="139.0" />
+        <param name="Ki" value="100.0" />
+	<param name="upper_limit" value="270" />
+      	<param name="lower_limit" value="-270" />
+	<param name="cutoff_frequency" value="10" />
+    </node>
+    <node name="ik_pid_controller" pkg="pid" type="controller" ns="z_pid" output="screen" >
+        <param name="node_name" value="z_pid" />
+        <param name="Kp" value="17500.0" />
+        <param name="Kd" value="0" />
+        <param name="Ki" value="80" />
+    </node>
+    <node name="ik_pid_controller" pkg="pid" type="controller" ns="y_pid" output="screen" >
+        <param name="node_name" value="y_pid" />
+        <param name="Kp" value="1000.0" />
+        <param name="Kd" value="110.0" />
+        <param name="Ki" value="20.0" />
+	<param name="cutoff_frequency" value="30" />
+    </node>
+    <node name="ik_pid_controller" pkg="pid" type="controller" ns="p_pid" output="screen" >
+        <param name="node_name" value="p_pid" />
+        <param name="Kp" value="2500.0" />
+        <param name="Kd" value="25.0" />
+        <param name="Ki" value="400.0" />
+    </node>
+    <node name="ik_pid_controller" pkg="pid" type="controller" ns="r_pid" output="screen" >
+        <param name="node_name" value="r_pid" />
+        <param name="Kp" value="1050.0" />
+        <param name="Kd" value="50.0" />
+        <param name="Ki" value="150.0" />
+	<param name="cutoff_frequency" value="30" />
+    </node>
+</launch>

@@ -25,12 +25,11 @@ if __name__ == '__main__':
                 goal_from_base = tfBuffer.lookup_transform("base_link", "goal_pose", rospy.Time(0), rospy.Duration(2.0))
                 #goal_adj_from_base = tfBuffer.lookup_transform("base_link", "goal_pose_adj", rospy.Time(0), rospy.Duration(2.0))
                 face_from_base = tfBuffer.lookup_transform("base_link", "face_pose", rospy.Time(0), rospy.Duration(2.0))
-		face_from_base_raw = tfBuffer.lookup_transform("base_link", "face_pose_raw", rospy.Time(0), rospy.Duration(2.0))
-		pub.publish(eef_from_base)                
-		pub2.publish(goal_from_base)
-                #pub3.publish(goal_adj_from_base)
+                face_from_base_raw = tfBuffer.lookup_transform("base_link", "face_pose_raw", rospy.Time(0), rospy.Duration(2.0))
+                pub2.publish(goal_from_base)
                 pub4.publish(face_from_base)
-		pub5.publish(face_from_base_raw)
+                pub.publish(eef_from_base)
+                pub5.publish(face_from_base_raw)
             except tf.LookupException:
                 pass
             rate.sleep()

@@ -113,7 +113,7 @@ class MoveGroupPythonInterfaceClass(object):
 
     def lookup_goal_pose(self):
         try:
-            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose",rospy.Time(0),rospy.Duration(2.0))
+            goal_from_base = self.tf_buffer.lookup_transform("base_link", "goal_pose",rospy.Time(0),rospy.Duration(10.0))
             if (rospy.Time.now() - rospy.Time(goal_from_base.header.stamp.secs)) > (rospy.Duration(20)):
                 return False
             return True
@@ -252,7 +252,7 @@ class MoveGroupPythonInterfaceClass(object):
                 self.search_mode()
             return
         # Go into search mode if the face pose has not updated in 5 seconds and it is in automode
-        if (rospy.Time.now() - rospy.Time(goal_from_base.header.stamp.secs)) > (rospy.Duration(5)) and self.auto_mode:
+        if (rospy.Time.now() - rospy.Time(goal_from_base.header.stamp.secs)) > (rospy.Duration(15)) and self.auto_mode:
             print("NO TRANSFORM FOUND")
             self.search_mode()
             return
