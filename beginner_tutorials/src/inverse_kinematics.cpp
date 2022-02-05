@@ -90,7 +90,11 @@ int main(int argc, char** argv){
     tf2::Quaternion quat;
     tf2::Matrix3x3 m;
     double roll, pitch, yaw;
-    double step_sizes[6] {0.1/hz, 0/hz, 0/hz, 0.85/hz, 0.5/hz, 0.5/hz}; //{0.03, 0.065, 0.07, 0.075, 0.05, 0.06}; // step size x hz is the velocity in rad or m/s
+    double step_sizes[6] {0.1/hz, 0/hz, 0/hz, 2.5/hz, 1.0/hz, 0.5/hz}; //{0.03, 0.065, 0.07, 0.085, 0.05, 0.06}; // step size x hz is the velocity in rad or m/s
+    double scaled_step_sizes[6] {0, 0, 0, 0, 0, 0};
+    //double distance_array[6] {0.01, 0.25, 0.25, 0.15, 0.15, 0.15};
+    double step_increase[6] {1.0/pow(hz,2), 1.0/pow(hz,2), 1.0/pow(hz,2), 2.5/pow(hz,2), 1.0/pow(hz,2), 1.0/pow(hz,2)}; // step_size_increasexhzxhz is the velocity in rad or m/s^2
+    double temp_step_size;
     ROS_INFO("%s", argv[1]);
     if (std::string(argv[1]) == "s1"){
         ROS_INFO("Slow Speed Profile");
@@ -104,9 +108,24 @@ int main(int argc, char** argv){
         ROS_INFO("High Speed Profile");
         step_sizes[1] = 0.3/hz;
         step_sizes[2] = 0.3/hz;
+    }else if (std::string(argv[1]) == "s4"){
+        ROS_INFO("Higher Speed Profile");
+        step_sizes[1] = 0.35/hz;
+        step_sizes[2] = 0.35/hz;
+    }else if (std::string(argv[1]) == "s5"){
+        ROS_INFO("Higher Speed Profile");
+        step_sizes[1] = 0.4/hz;
+        step_sizes[2] = 0.4/hz;
+    }else if (std::string(argv[1]) == "s6"){
+        ROS_INFO("Higher Speed Profile");
+        step_sizes[1] = 0.45/hz;
+        step_sizes[2] = 0.45/hz;
     }else{
         ROS_INFO("Error Selecting Speed");
     }
+    // The distance is calculated based on the step size and the step_increase which are stand ins for velocity and acceleration 
+    double distance_array[6] {0.5*pow(step_sizes[0], 2)/step_increase[0], 0.5*pow(step_sizes[1], 2)/step_increase[1], 0.5*pow(step_sizes[2], 2)/step_increase[2], 0.5*pow(step_sizes[3], 2)/step_increase[3], 0.5*pow(step_sizes[4], 2)/step_increase[4], 0.5*pow(step_sizes[5], 2)/step_increase[5]};
+
     // PID Publishers
     ros::Publisher pub_elbow_state = nh.advertise<std_msgs::Float64>("/elbow_3_pid/state",1);
 	ros::Publisher pub_elbow_setpoint = nh.advertise<std_msgs::Float64>("/elbow_3_pid/setpoint",1);
@@ -144,6 +163,7 @@ int main(int argc, char** argv){
     KDL::JntArray q_current(chain.getNrOfJoints());
     KDL::JntArray q_goal(chain.getNrOfJoints());
     KDL::JntArray q_goal_prev(chain.getNrOfJoints());    // previous goal that was planned to where the goal has been scaled to a certian step size
+    KDL::JntArray q_switch_pos(chain.getNrOfJoints());
 
     // Testing values, should be near zero position after ik
     KDL::Vector zero_pos_v(0.4, 0.4, 1.0);
@@ -154,7 +174,7 @@ int main(int argc, char** argv){
     KDL::JntArray qmin(chain.getNrOfJoints());
     qmin(0) = 0.0;
     qmin(1) = -3.0;
-    qmin(2) = -3.1;
+    qmin(2) = -2.75;
     qmin(3) = -2.53;
     qmin(4) = -2.13;
     qmin(5) = -1.57;
@@ -162,7 +182,7 @@ int main(int argc, char** argv){
     KDL::JntArray qmax(chain.getNrOfJoints());
     qmax(0) = 1.00;
     qmax(1) = 3.0;
-    qmax(2) = 3.1;
+    qmax(2) = 2.75;
     qmax(3) = 2.53;
     qmax(4) = 0;
     qmax(5) = 1.57;
@@ -217,6 +237,12 @@ int main(int argc, char** argv){
             q_prev(3) = current_joint_positions[3];
             q_prev(4) = current_joint_positions[4];
             q_prev(5) = current_joint_positions[5];
+            q_switch_pos(0) = current_joint_positions[0];
+            q_switch_pos(1) = current_joint_positions[1];
+            q_switch_pos(2) = current_joint_positions[2];
+            q_switch_pos(3) = current_joint_positions[3];
+            q_switch_pos(4) = current_joint_positions[4];
+            q_switch_pos(5) = current_joint_positions[5];
             pub_z_1_state.publish(current_joint_positions[0]);
             pub_shoulder_state.publish(current_joint_positions[1]);
             pub_elbow_state.publish(current_joint_positions[2]);
@@ -238,9 +264,15 @@ int main(int argc, char** argv){
          //ROS_INFO("In Loop");
     }
     while(nh.ok()){
-        pub.publish(msg);
+        for(int i=0; i < 75; i++){
+            ROS_INFO("Publishing Search Message");
+            pub.publish(msg);
+            rate.sleep();
+            ros::spinOnce();
+        }
         break;
     }
+    ROS_INFO("dist array: [%f, %f, %f, %f, %f, %f]\n", distance_array[0], distance_array[1], distance_array[2], distance_array[3], distance_array[4], distance_array[5]);
 
 
     while(nh.ok()){
@@ -298,7 +330,7 @@ int main(int argc, char** argv){
             x_normal = x_normal.normalize();
             y_normal = tf2::tf2Cross(z_normal, x_normal);
             y_normal = y_normal.normalize();
-            ROS_INFO("x y z normal: [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n",  x_normal[0], x_normal[1], x_normal[2], y_normal[0], y_normal[1], y_normal[2], z_normal[0], z_normal[1], z_normal[2]);
+            //ROS_INFO("x y z normal: [%f, %f, %f] [%f, %f, %f] [%f, %f, %f]\n",  x_normal[0], x_normal[1], x_normal[2], y_normal[0], y_normal[1], y_normal[2], z_normal[0], z_normal[1], z_normal[2]);
             tf2::Matrix3x3 cam_to_normal;
             cam_to_normal.setValue(x_normal[0], y_normal[0], z_normal[0], x_normal[1], y_normal[1], z_normal[1], x_normal[2], y_normal[2], z_normal[2]);
             tf2::Transform cam_to_normal_trans;
@@ -401,15 +433,18 @@ int main(int argc, char** argv){
                     q_first(i) = q_first(i) - overshoot*2*M_PI;
                 }
             }
-            q(3) = q_first(3);
-            q(4) = q_first(4);
-            q(5) = q_first(5);
+            // If the motion plan didn't fail, then the goal is updated
+            if(ret == 0){
+                q(3) = q_first(3);
+                q(4) = q_first(4);
+                q(5) = q_first(5);
+            }
             EEF_Origin = base_to_goal.getOrigin();
             EEF_pos_vector[0] = EEF_Origin[0];
             EEF_pos_vector[1] = EEF_Origin[1];
             EEF_pos_vector[2] = EEF_Origin[2];
             KDL::Frame EEF_pos_frame(eef_goal_rotation, EEF_pos_vector);
-            iksolver1.CartToJnt(q_init, EEF_pos_frame, q_first);
+            int ret_2 = iksolver1.CartToJnt(q_init, EEF_pos_frame, q_first);
             for(int i = 1; i < chain.getNrOfJoints(); i++){
                 int overshoot = q_first(i)/(2*M_PI);
                 if(abs(q_first(i)/(2*M_PI)) - abs(overshoot) > 0.5 && overshoot > 0){
@@ -421,29 +456,61 @@ int main(int argc, char** argv){
                     q_first(i) = q_first(i) - overshoot*2*M_PI;
                 }
             }
-            q(0) = q_first(0);
-            q(1) = q_first(1);
-            q(2) = q_first(2);
+            // If the motion plan didn't fail, then the goal is updated
+            if(ret == 0 && ret_2 == 0){
+                q(0) = q_first(0);
+                q(1) = q_first(1);
+                q(2) = q_first(2);
+            }
 
 
-            ROS_INFO("q_prev: [%f, %f, %f, %f, %f, %f]\n", q_prev(0), q_prev(1), q_prev(2), q_prev(3), q_prev(4), q_prev(5));
+            //ROS_INFO("q_prev: [%f, %f, %f, %f, %f, %f]\n", q_prev(0), q_prev(1), q_prev(2), q_prev(3), q_prev(4), q_prev(5));
             // Check the position relative to the previous q
             for(int i = 0; i < chain.getNrOfJoints(); i++){
+                temp_step_size = step_sizes[i];
+                // reset the direction switch position indicator to the current joint position if a switch has been detected
+                if (signbit(q(i) - q_init(i)) != signbit(q_prev(i) - q_init(i))){
+                    q_switch_pos(i) = q_init(i);
+                    // the trajectory position must also be updated to be the current position
+                    q_goal(i) = q_init(i);
+                }
+                // Checkif the trajectory position is within the distance array value of the joint position at the last switch
+                if (abs(q_goal(i) - q_switch_pos(i)) < distance_array[i]){
+                    temp_step_size = step_increase[i] + step_increase[i]*(0.5*pow((1 + 8*abs(q_goal(i) - q_switch_pos(i))/step_increase[i]), 0.5) - 0.5);
+                    if(i == 2){
+                        //ROS_INFO("step_size: %f\n", step_sizes[i]);
+                        ROS_INFO("accel seperation: %f\n", abs(q_goal(i) - q_switch_pos(i)));
+
+
+                    }
+                }
+
+                // Check if the goal is within the deceleration distance of the trajectory position
+                if(abs(q(i) - q_goal(i)) < distance_array[i]){
+                    temp_step_size = step_increase[i] + step_increase[i]*(0.5*pow((1 + 8*abs(q(i) - q_goal(i))/step_increase[i]), 0.5) - 0.5);
+                    //temp_step_size = step_sizes[i]*abs(q(i) - q_init(i))/distance_array[i];
+                    ROS_INFO("decel seperation: %f\n", abs(q(i) - q_goal(i)));
+                }
+                // adjust the temp_step_size to be no higher than the step size
+                if(temp_step_size > step_sizes[i]){
+                    temp_step_size = step_sizes[i];
+                }
+                ROS_INFO("step_size: %f\n", step_sizes[i]);
+                ROS_INFO("temp_size: %f\n", temp_step_size);
+                ROS_INFO("--------------");
+
                 // Check if the goal is in the same direction relative to the current position
                 if(signbit(q(i) - q_init(i)) == signbit(q_prev(i) - q_init(i))){
-                    if(i == 2){
-                        ROS_INFO("Same direction\n");
-                    }
                     // See if the overall goal is greater than a step away from the previous adjusted goal
-                    if(abs(q(i) - q_goal(i)) > step_sizes[i]){
+                    if(abs(q(i) - q_goal(i)) > temp_step_size){
                         if(i == 2){
-                            ROS_INFO("Greater than a step\n");
+                            //ROS_INFO("Greater than a step\n");
                         }
                         // If it is, then increase the adjusted goal by the step size in the appropriate direction
-                        if(q(i) - q_goal(i) > step_sizes[i]){
-                            q_goal(i) = q_goal(i) + step_sizes[i];
-                        }else if(q(i) - q_goal(i) < step_sizes[i]){
-                            q_goal(i) = q_goal(i) - step_sizes[i];
+                        if(q(i) - q_goal(i) > temp_step_size){
+                            q_goal(i) = q_goal(i) + temp_step_size;
+                        }else if(q(i) - q_goal(i) < temp_step_size){
+                            q_goal(i) = q_goal(i) - temp_step_size;
                         }
                     }else{
                         // If it isn't, then set the current goal to be the overall goal q
@@ -451,13 +518,14 @@ int main(int argc, char** argv){
                     }
                 }else{
                     // If it isn't, check if the goal is within a step of the current position q_init
-                    if(abs(q(i) - q_init(i)) > step_sizes[i]){
-                        if(q(i) - q_init(i) > step_sizes[i]){
-                            q_goal(i) = q_init(i) + step_sizes[i];
-                        }else if(q(i) - q_init(i) < step_sizes[i]){
-                            q_goal(i) = q_init(i) - step_sizes[i];
+                    if(abs(q(i) - q_init(i)) > temp_step_size){
+                        if(q(i) - q_init(i) > temp_step_size){
+                            q_goal(i) = q_init(i) + temp_step_size;
+                        }else if(q(i) - q_init(i) < temp_step_size){
+                            q_goal(i) = q_init(i) - temp_step_size;
                         }
-                    }else{
+                    }
+                    else{
                         q_goal(i) = q(i);
                     }
                 }
@@ -470,9 +538,9 @@ int main(int argc, char** argv){
                 // update the previous goal to be equal to the current goal for the next loop of fun
                 q_prev(i) = q(i);
             }
-            ROS_INFO("q_goal: [%f, %f, %f, %f, %f, %f]\n", q_goal(0), q_goal(1), q_goal(2), q_goal(3), q_goal(4), q_goal(5));
-            ROS_INFO("current_joint_positions: [%f, %f, %f, %f, %f, %f]\n", q_init(0), q_init(1), q_init(2), q_init(3), q_init(4), q_init(5));
-            ROS_INFO("q: [%f, %f, %f, %f, %f, %f]\n", q(0), q(1), q(2), q(3), q(4), q(5));
+            //ROS_INFO("q_goal: [%f, %f, %f, %f, %f, %f]\n", q_goal(0), q_goal(1), q_goal(2), q_goal(3), q_goal(4), q_goal(5));
+            //ROS_INFO("current_joint_positions: [%f, %f, %f, %f, %f, %f]\n", q_init(0), q_init(1), q_init(2), q_init(3), q_init(4), q_init(5));
+            //ROS_INFO("q: [%f, %f, %f, %f, %f, %f]\n", q(0), q(1), q(2), q(3), q(4), q(5));
             /*
             // using the step size to scale down movements
             for(int i =0; i < chain.getNrOfJoints(); i++){

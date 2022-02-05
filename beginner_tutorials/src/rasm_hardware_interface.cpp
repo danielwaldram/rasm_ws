@@ -180,9 +180,22 @@ void MyRobot::write(ros::Duration elapsed_time, double *Vc_array){
 	}else{
         effort_values.sensor_values.push_back((int)pid_commands[3]);
 	}
-	for(int i = 4; i < 6; i++){
-		effort_values.sensor_values.push_back((int)pid_commands[i]);
+	// Scale down the pitch joints command as it gets closer to zero position to account for the high backlash
+	double min_command_bound = 50;
+	if(abs(joint_position_[4]) < M_PI/2.0){
+		ROS_INFO("Less than 90");
+
+		int max_command = int(abs(joint_position_[4] + 37.0*M_PI/180.0)*(400.0 - min_command_bound)/(M_PI/2.0) + min_command_bound);// - 37.0*M_PI/180.0*(400.0 - min_command_bound)/(M_PI/2.0));
+		ROS_INFO("Max command: %i", max_command);
+		if(pid_commands[4] < max_command){
+			effort_values.sensor_values.push_back((int)(pid_commands[4]));
+		}else{
+			effort_values.sensor_values.push_back((int)(copysign(max_command, pid_commands[4])));
+		}
+	}else{
+		effort_values.sensor_values.push_back((int)(pid_commands[4]));
 	}
+	effort_values.sensor_values.push_back((int)pid_commands[5]);
 
 
 

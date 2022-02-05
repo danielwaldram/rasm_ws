@@ -62,6 +62,9 @@ int main(int argc, char** argv){
     tf2::Transform base_to_eef;
     // Step size defines the speed of the end effector
     double step_sizes[6] {0.1/hz, 0.25/hz, 0.25/hz, 0.5/hz, 0.3/hz, 0.3/hz};
+    double scaled_step_sizes[6] {0, 0, 0, 0, 0, 0};
+    double distance_array[6] {0.01, 0.25, 0.25, 0.05, 0.25, 0.25};
+    double temp_step_size;
     // PID Publishers
     ros::Publisher pub_elbow_state = nh.advertise<std_msgs::Float64>("/elbow_3_pid/state",1);
 	ros::Publisher pub_elbow_setpoint = nh.advertise<std_msgs::Float64>("/elbow_3_pid/setpoint",1);
@@ -91,12 +94,12 @@ int main(int argc, char** argv){
     KDL::JntArray q_prev(chain.getNrOfJoints());
     KDL::JntArray q_goal(chain.getNrOfJoints());
     KDL::JntArray q_search(chain.getNrOfJoints()); // joint array for the search pose
-    q_search(0) = 0.1;
-    q_search(1) = 1.309;
-    q_search(2) = -2.164;
-    q_search(3) = -0.71559;
-    q_search(4) = -1.5708;
-    q_search(5) = 0;
+    q_search(0) = 0.1;      // prismatic
+    q_search(1) = 1.4868;    // shoulder (prev: 1.309)
+    q_search(2) = -2.4795;   // elbow (prev: -2.164)
+    q_search(3) = -0.6873912129674569;    // yaw(prev: -0.94)
+    q_search(4) = -1.5708;  // pitch
+    q_search(5) = 0;        // roll
     bool looking_for_pos = true;
 
     // First find the current joint positions
@@ -158,21 +161,23 @@ int main(int argc, char** argv){
 
             // Check the position relative to the previous q
             for(int i = 0; i < chain.getNrOfJoints(); i++){
+                // Check if the goal is within the deceleration distance of the current position
+                temp_step_size = step_sizes[i];
+                if(abs(q_search(i) - q_current(i)) < distance_array[i]){
+                    temp_step_size = step_sizes[i]*abs(q_search(i) - q_current(i))/distance_array[i];
+                }
                 // Check if the goal is in the same direction relative to the current position
                 if(signbit(q_search(i) - q_current(i)) == signbit(q_prev(i) - q_current(i))){
-                    if(i == 2){
-                        ROS_INFO("Same direction\n");
-                    }
                     // See if the overall goal is greater than a step away from the previous adjusted goal
-                    if(abs(q_search(i) - q_goal(i)) > step_sizes[i]){
+                    if(abs(q_search(i) - q_goal(i)) > temp_step_size){
                         if(i == 2){
                             ROS_INFO("Greater than a step\n");
                         }
                         // If it is, then increase the adjusted goal by the step size in the appropriate direction
-                        if(q_search(i) - q_goal(i) > step_sizes[i]){
-                            q_goal(i) = q_goal(i) + step_sizes[i];
-                        }else if(q_search(i) - q_goal(i) < step_sizes[i]){
-                            q_goal(i) = q_goal(i) - step_sizes[i];
+                        if(q_search(i) - q_goal(i) > temp_step_size){
+                            q_goal(i) = q_goal(i) + temp_step_size;
+                        }else if(q_search(i) - q_goal(i) < temp_step_size){
+                            q_goal(i) = q_goal(i) - temp_step_size;
                         }
                     }else{
                         // If it isn't, then set the current goal to be the overall goal q
@@ -180,11 +185,11 @@ int main(int argc, char** argv){
                     }
                 }else{
                     // If it isn't, check if the goal is within a step of the current position q_init
-                    if(abs(q_search(i) - q_current(i)) > step_sizes[i]){
-                        if(q_search(i) - q_current(i) > step_sizes[i]){
-                            q_goal(i) = q_current(i) + step_sizes[i];
-                        }else if(q_search(i) - q_current(i) < step_sizes[i]){
-                            q_goal(i) = q_current(i) - step_sizes[i];
+                    if(abs(q_search(i) - q_current(i)) > temp_step_size){
+                        if(q_search(i) - q_current(i) > temp_step_size){
+                            q_goal(i) = q_current(i) + temp_step_size;
+                        }else if(q_search(i) - q_current(i) < temp_step_size){
+                            q_goal(i) = q_current(i) - temp_step_size;
                         }
                     }else{
                         q_goal(i) = q_search(i);

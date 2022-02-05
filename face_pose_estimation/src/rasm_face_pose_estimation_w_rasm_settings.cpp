@@ -44,12 +44,12 @@ const double centimeter_to_inch_conversion = 1/2.54;
 float screen_distance = 0.70;
 float screen_vertical_shift =  -0.0;
 // The sensitivity of the RASM to movement in the x, y, and z directions as well as rotations
-float x_allow = 0.075;
-float y_allow = 0.075;
-float z_allow = 0.075;
+float x_allow = 0.05;
+float y_allow = 0.05;
+float z_allow = 0.05;
 float xrot_allow = 0.05;   //roll
-float yrot_allow = 0.1;    //pitch
-float zrot_allow = 0.15;    //yaw
+float yrot_allow = 0.05;    //pitch
+float zrot_allow = 0.05;    //yaw
 float x_transition = 0.1;
 float y_transition = 0.1;
 float z_transition = 0.1;
@@ -181,13 +181,12 @@ int main(int argc, char **argv){
   std::vector<geometry_msgs::TransformStamped> face_and_goal;
 
   // When the face is further from the screen, the tolerance required for replanning is higher
-  float x_allow_lazy = 0.05;
-  float y_allow_lazy = 0.05;
-  float z_allow_lazy = 0.05;
-  float xrot_allow_lazy = 0.1;
-  float yrot_allow_lazy = 0.15;
-  float zrot_allow_lazy = 0.25;
-
+  float x_allow_lazy = x_allow; //0.05
+  float y_allow_lazy = y_allow;
+  float z_allow_lazy = x_allow;
+  float xrot_allow_lazy = xrot_allow;
+  float yrot_allow_lazy = yrot_allow;
+  float zrot_allow_lazy = zrot_allow;
   float tol_transition = 0.75;
   float angle_tol_transition = 20;
 
@@ -199,6 +198,9 @@ int main(int argc, char **argv){
   double base_to_face_roll_prev = 0.0;
   double base_to_face_pitch_prev = 0.0;
   double base_to_face_yaw_prev = 0.0;
+  tf2::Quaternion q_base_to_face_prev;
+  q_base_to_face_prev.setRPY(0, 0, 0);
+  bool first_loop = true;
   double x_pos_prev = 0.0;  // prev x,y, and z position
   double y_pos_prev = 0.0;
   double z_pos_prev = 0.0;
@@ -521,12 +523,13 @@ int main(int argc, char **argv){
             }else{
                 lazy_adjust = 0;
             }
+            adjust_face_pose(cam_to_face, cam_to_face_prev, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
 
-            if(lazy_adjust == 0){
-                adjust_face_pose(cam_to_face, cam_to_face_prev, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
-            }else{
-                adjust_face_pose(cam_to_face, cam_to_face_prev, x_allow_lazy, y_allow_lazy, z_allow_lazy, xrot_allow_lazy, yrot_allow_lazy, zrot_allow_lazy);
-            }
+            //if(lazy_adjust == 0){
+            //    adjust_face_pose(cam_to_face, cam_to_face_prev, x_allow, y_allow, z_allow, xrot_allow, yrot_allow, zrot_allow);
+            //}else{
+            //    adjust_face_pose(cam_to_face, cam_to_face_prev, x_allow_lazy, y_allow_lazy, z_allow_lazy, xrot_allow_lazy, yrot_allow_lazy, zrot_allow_lazy);
+            //}
             //Adjusting based on error
             pub.publish(error_count);
             //recalc base to face based on adjusted values
@@ -551,31 +554,40 @@ int main(int argc, char **argv){
             }
             quat = base_to_face.getRotation();
             tf2::Matrix3x3 m_base_to_face(quat);
-            double base_to_face_roll, base_to_face_pitch, base_to_face_yaw, base_to_face_x_pos, base_to_face_y_pos, base_to_face_z_pos;
-            m_base_to_face.getRPY(base_to_face_roll, base_to_face_pitch, base_to_face_yaw);
-            std::cout << "Yaw: " << std::endl;
-            base_to_face_yaw = low_pass_filter(base_to_face_yaw, base_to_face_yaw_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
-            std::cout << "Pitch: " << std::endl;
-            base_to_face_pitch = low_pass_filter(base_to_face_pitch, base_to_face_pitch_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was setf
-            std::cout << "Roll: " << std::endl;
-            base_to_face_roll = low_pass_filter(base_to_face_roll, base_to_face_roll_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            //double base_to_face_roll, base_to_face_pitch, base_to_face_yaw, base_to_face_x_pos, base_to_face_y_pos, base_to_face_z_pos;
+            //m_base_to_face.getRotation(base_to_face_roll, base_to_face_pitch, base_to_face_yaw);
+            //m_base_to_face.getRPY(base_to_face_roll, base_to_face_pitch, base_to_face_yaw);
+            double base_to_face_x_pos, base_to_face_y_pos, base_to_face_z_pos;
+            //std::cout << "Yaw: " << std::endl;
+            //base_to_face_yaw = low_pass_filter(base_to_face_yaw, base_to_face_yaw_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            //std::cout << "Pitch: " << std::endl;
+            //base_to_face_pitch = low_pass_filter(base_to_face_pitch, base_to_face_pitch_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was setf
+            //std::cout << "Roll: " << std::endl;
+            //base_to_face_roll = low_pass_filter(base_to_face_roll, base_to_face_roll_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
+            
+            double quat_alpha = yaw_alpha*time_since_filter_call.toSec()/dt;
+            if (quat_alpha > 1.0){
+                quat_alpha = 1.0;
+            }
+            tf2::Quaternion q_filtered = quat.slerp(q_base_to_face_prev, 1 -quat_alpha);
             std::cout << "X: " << std::endl;
             base_to_face_x_pos = low_pass_filter(base_to_face.getOrigin()[0], base_to_face_x_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
             std::cout << "Y: " << std::endl;
             base_to_face_y_pos = low_pass_filter(base_to_face.getOrigin()[1], base_to_face_y_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
             std::cout << "Z: " << std::endl;
             base_to_face_z_pos = low_pass_filter(base_to_face.getOrigin()[2], base_to_face_z_pos_prev, yaw_alpha, time_since_filter_call.toSec(), dt); // Assuming for now that the loop rate is consistent with the ros rate that was set
-            base_to_face_yaw_prev = base_to_face_yaw;
-            base_to_face_pitch_prev = base_to_face_pitch;
-            base_to_face_roll_prev = base_to_face_roll;
+            //base_to_face_yaw_prev = base_to_face_yaw;
+            //base_to_face_pitch_prev = base_to_face_pitch;
+            //base_to_face_roll_prev = base_to_face_roll;
             base_to_face_x_pos_prev = base_to_face_x_pos;
             base_to_face_y_pos_prev = base_to_face_y_pos;
             base_to_face_z_pos_prev = base_to_face_z_pos;
+            q_base_to_face_prev = q_filtered;
 
             base_to_face.setOrigin(tf2::Vector3(base_to_face_x_pos, base_to_face_y_pos, base_to_face_z_pos));
-            quat.setRPY(base_to_face_roll, base_to_face_pitch, base_to_face_yaw);
-            base_to_face.setRotation(quat);
-
+            //quat.setRPY(base_to_face_roll, base_to_face_pitch, base_to_face_yaw);
+            //base_to_face.setRotation(quat);
+            base_to_face.setRotation(q_filtered);
 
 
             //base_to_ideal = base_to_face*face_to_ideal;

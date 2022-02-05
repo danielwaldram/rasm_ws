@@ -19,9 +19,9 @@
     </node>
     <node name="ik_pid_controller" pkg="pid" type="controller" ns="z_pid" output="screen" >
         <param name="node_name" value="z_pid" />
-        <param name="Kp" value="17500.0" />
+        <param name="Kp" value="3500.0" />
         <param name="Kd" value="0" />
-        <param name="Ki" value="80" />
+        <param name="Ki" value="10" />
     </node>
     <node name="ik_pid_controller" pkg="pid" type="controller" ns="y_pid" output="screen" >
         <param name="node_name" value="y_pid" />

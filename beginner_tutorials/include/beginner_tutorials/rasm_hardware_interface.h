@@ -58,11 +58,11 @@ public:
     //current_position[5] = -((msg.sensor_values[5] - 5) - 555)*M_PI/501.5;
 
     current_position[0] = msg.sensor_values[0]/1000.0;
-    current_position[1] = (msg.sensor_values[1] - 1895)*2*M_PI/4095;
+    current_position[1] = (msg.sensor_values[1] - 1618)*2*M_PI/4095;
     current_position[2] = (msg.sensor_values[2] - 2101)*2*M_PI/4095;
-    current_position[3] = (msg.sensor_values[3]- 2164)*2*M_PI/4095;
+    current_position[3] = (msg.sensor_values[3]- 2143)*2*M_PI/4095;
     current_position[4] = (msg.sensor_values[4] - 3359)*2*M_PI/4095;
-    current_position[5] = -(msg.sensor_values[5] - 2240)*2*M_PI/4095;
+    current_position[5] = -(msg.sensor_values[5] - 2242)*2*M_PI/4095;
 
     low_pass_filter();
   };
