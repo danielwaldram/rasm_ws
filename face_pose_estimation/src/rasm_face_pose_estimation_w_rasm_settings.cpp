@@ -71,6 +71,108 @@ bool rasm_new_settings(face_pose_estimation::rasm_settings::Request &req, face_p
     return true;
 }
 
+/**
+* Returns the interpolated y-value.
+* Saturates to y0 or y1 if x outside interval [x0, x1].
+*/
+float interpolate_segment(float x0, float y0, float x1, float y1, float x)
+{
+    float t;
+
+    if (x <= x0) { return y0; }
+    if (x >= x1) { return y1; }
+
+    t =  (x-x0);
+    t /= (x1-x0);
+
+    return y0 + t*(y1-y0);
+}
+
+/* Structure definition */
+struct table_1d {
+    uint8_t x_length;
+
+    float *x_values;
+    float *y_values;
+};
+
+/* Declare variable using above structure and the function datapoints */
+/* These coordinates correspond to the points illustrated in the above graph */
+static float x_cubic[] = {0
+    , 0.052389765625
+    , 0.104118125
+    , 0.154523671875
+    , 0.202945
+    , 0.248720703125
+    , 0.291189375
+    , 0.329689609375
+    , 0.36356
+    , 0.392139140625
+    , 0.414765625
+    , 0.430778046875
+    , 0.439514999999988};
+static float y_cubic[] = {0
+    ,0.025
+    ,0.05
+    ,0.075
+    ,0.1
+    ,0.125
+    ,0.15
+    ,0.175
+    ,0.2
+    ,0.225
+    ,0.25
+    ,0.275
+    ,0.3};
+
+static struct table_1d cubic_table = {
+    13,      /* Number of data points */
+    x_cubic, /* Array of x-coordinates */
+    y_cubic  /* Array of y-coordinates */
+};
+
+float
+interpolate_table_1d(struct table_1d *table, float x)
+/* 1D Table lookup with interpolation */
+{
+    std::cout << " x_value: " << x;
+    uint8_t segment;
+
+    /* Check input bounds and saturate if out-of-bounds */
+    if (x > (table->x_values[table->x_length-1])) {
+        std::cout << " too large: " << table->y_values[table->x_length-1];
+       /* x-value too large, saturate to max y-value */
+        return table->y_values[table->x_length-1];
+    }
+    else if (x < (table->x_values[0])) {
+       /* x-value too small, saturate to min y-value */
+        std::cout << " too small: " << table->y_values[0];
+        return table->y_values[0];
+    }
+
+    /* Find the segment that holds x */
+    for (segment = 0; segment<(table->x_length-1); segment++)
+    {
+        if ((table->x_values[segment]   <= x) &&
+            (table->x_values[segment+1] >= x))
+        {
+            /* Found the correct segment */
+            /* Interpolate */
+            return interpolate_segment(table->x_values[segment],   /* x0 */
+                                       table->y_values[segment],   /* y0 */
+                                       table->x_values[segment+1], /* x1 */
+                                       table->y_values[segment+1], /* y1 */
+                                       x);                         /* x  */
+        }
+    }
+    std::cout << " too large: " << table->y_values[table->x_length-1];
+
+    /* Something with the data was wrong if we get here */
+    /* Saturate to the max value */
+    return table->y_values[table->x_length-1];
+}
+
+
 int main(int argc, char **argv){
 
     double hz = 10.0;
@@ -183,7 +285,7 @@ int main(int argc, char **argv){
   // When the face is further from the screen, the tolerance required for replanning is higher
   float x_allow_lazy = x_allow; //0.05
   float y_allow_lazy = y_allow;
-  float z_allow_lazy = x_allow;
+  float z_allow_lazy = z_allow;
   float xrot_allow_lazy = xrot_allow;
   float yrot_allow_lazy = yrot_allow;
   float zrot_allow_lazy = zrot_allow;
@@ -809,11 +911,35 @@ void adjust_face_pose(tf2::Transform &cam_to_face, tf2::Transform &cam_to_face_p
         error_count.sensor_values.push_back(0);
     }
     if(abs(cam_to_face_yaw - cam_to_face_prev_yaw) > yaw_allowable){
-        if(lazy_adjust == 0){
+        //if(lazy_adjust == 0){
+        
+        if(abs(cam_to_face_yaw) < 0.3){
+            ROS_INFO("Adjusted yaw");
+            //yaw_adjusted = cam_to_face_yaw;
             yaw_adjusted = cam_to_face_yaw/2;
+            std::cout << " abs value: " << abs(cam_to_face_yaw);
+            std::cout << " Adj yaw Prev Value: " << cam_to_face_yaw;
+            std::cout << " Adj yaw new Value: " << yaw_adjusted << std::endl;
+
         }else{
             yaw_adjusted = cam_to_face_yaw;
+            //std::cout << " Yaw unadjusted: " << yaw_adjusted << std::endl;
         }
+        //if(abs(cam_to_face_yaw) < 0.43 && cam_to_face_yaw > 0){
+            //yaw_adjusted = interpolate_table_1d(&cubic_table, cam_to_face_yaw);
+            //std::cout << " abs value: " << abs(cam_to_face_yaw);
+            //std::cout << " Adj yaw Prev Value: " << cam_to_face_yaw;
+            //std::cout << " Adj yaw new Value: " << yaw_adjusted << std::endl;
+
+        //}else if(abs(cam_to_face_yaw) < 0.43 && cam_to_face_yaw < 0){
+            //yaw_adjusted = -interpolate_table_1d(&cubic_table, abs(cam_to_face_yaw));
+            //std::cout << " abs value: " << abs(cam_to_face_yaw);
+            //std::cout << " Adj yaw Prev Value: " << cam_to_face_yaw;
+            //std::cout << " Adj yaw new Value: " << yaw_adjusted << std::endl;
+        //}else{
+            //yaw_adjusted = cam_to_face_yaw;
+            //std::cout << " Yaw unadjusted: " << yaw_adjusted << std::endl;
+        //}
         error_count.sensor_values.push_back(1);
     }else{
         yaw_adjusted = cam_to_face_prev_yaw;
@@ -877,8 +1003,8 @@ tf2::Transform adjust_goal_pose(tf2::Transform &ideal_to_goal, float &x_allowabl
 }
 
 double low_pass_filter(double current_val, double prev_val, double alpha, double time_since_call, double loop_rate){
-    std::cout << "Raw Value: " << current_val;
-    std::cout << ", Prev Value: " << prev_val;
+    //std::cout << "Raw Value: " << current_val;
+    //std::cout << ", Prev Value: " << prev_val;
     alpha = alpha*time_since_call/loop_rate;
     if (alpha > 1.0){
         alpha = 1.0;
@@ -886,6 +1012,6 @@ double low_pass_filter(double current_val, double prev_val, double alpha, double
     std::cout << ", Time scaled alpha: " << alpha;
     double new_val;
     new_val = alpha*current_val + (1 - alpha)*prev_val;
-    std::cout << ", Filtered Value: " << new_val << std::endl;
+    //std::cout << ", Filtered Value: " << new_val << std::endl;
     return new_val;
   }

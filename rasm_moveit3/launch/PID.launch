@@ -1,19 +1,18 @@
 <launch>
     <node name="pid_controller" pkg="pid" type="controller" ns="elbow_pid" output="screen" >
         <param name="node_name" value="elbow_pid" />
-        <param name="Kp" value="1200.0" />
-        <param name="Kd" value="120.0" />
-        <param name="Ki" value="10.0" />
+        <param name="Kp" value="1800.0" />
+        <param name="Kd" value="75.0" />
+        <param name="Ki" value="100.0" />
 	<param name="upper_limit" value="250" />
       	<param name="lower_limit" value="-250" />
-	<param name="cutoff_frequency" value="70" />
         <param name="max_loop_frequency" value="225.0" />
         <param name="min_loop_frequency" value="225.0" />
     </node>
     <node name="pid_controller" pkg="pid" type="controller" ns="shoulder_pid" output="screen" >
         <param name="node_name" value="shoulder_pid" />
-        <param name="Kp" value="1300.0" />
-        <param name="Kd" value="139.0" />
+        <param name="Kp" value="1900.0" />
+        <param name="Kd" value="200.0" />
         <param name="Ki" value="100.0" />
 	<param name="upper_limit" value="270" />
       	<param name="lower_limit" value="-270" />
@@ -23,24 +22,24 @@
     </node>
     <node name="pid_controller" pkg="pid" type="controller" ns="z_1_pid" output="screen" >
         <param name="node_name" value="z_1_pid" />
-        <param name="Kp" value="17500.0" />
+        <param name="Kp" value="22500.0" />
         <param name="Kd" value="0" />
-        <param name="Ki" value="80" />
+        <param name="Ki" value="200" />
         <param name="max_loop_frequency" value="225.0" />
         <param name="min_loop_frequency" value="225.0" />
     </node>
     <node name="pid_controller" pkg="pid" type="controller" ns="y_4_pid" output="screen" >
         <param name="node_name" value="y_4_pid" />
-        <param name="Kp" value="1100.0" />
-        <param name="Kd" value="60.0" />
-        <param name="Ki" value="20.0" />
+        <param name="Kp" value="2200.0" />
+        <param name="Kd" value="100.0" />
+        <param name="Ki" value="150.0" />
 	<param name="cutoff_frequency" value="30" />
         <param name="max_loop_frequency" value="225.0" />
         <param name="min_loop_frequency" value="225.0" />
     </node>
     <node name="pid_controller" pkg="pid" type="controller" ns="p_5_pid" output="screen" >
         <param name="node_name" value="p_5_pid" />
-        <param name="Kp" value="2500.0" />
+        <param name="Kp" value="3500.0" />
         <param name="Kd" value="25.0" />
         <param name="Ki" value="400.0" />
         <param name="max_loop_frequency" value="225.0" />

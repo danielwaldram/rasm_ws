@@ -93,7 +93,7 @@ int main(int argc, char** argv){
     double step_sizes[6] {0.1/hz, 0/hz, 0/hz, 2.5/hz, 1.0/hz, 0.5/hz}; //{0.03, 0.065, 0.07, 0.085, 0.05, 0.06}; // step size x hz is the velocity in rad or m/s
     double scaled_step_sizes[6] {0, 0, 0, 0, 0, 0};
     //double distance_array[6] {0.01, 0.25, 0.25, 0.15, 0.15, 0.15};
-    double step_increase[6] {1.0/pow(hz,2), 1.0/pow(hz,2), 1.0/pow(hz,2), 2.5/pow(hz,2), 1.0/pow(hz,2), 1.0/pow(hz,2)}; // step_size_increasexhzxhz is the velocity in rad or m/s^2
+    double step_increase[6] {1.0/pow(hz,2), 1.0/pow(hz,2), 1.0/pow(hz,2), 2.0/pow(hz,2), 0.75/pow(hz,2), 1.0/pow(hz,2)}; // step_size_increasexhzxhz is the acceleration in rad or m/s^2
     double temp_step_size;
     ROS_INFO("%s", argv[1]);
     if (std::string(argv[1]) == "s1"){
@@ -117,9 +117,34 @@ int main(int argc, char** argv){
         step_sizes[1] = 0.4/hz;
         step_sizes[2] = 0.4/hz;
     }else if (std::string(argv[1]) == "s6"){
-        ROS_INFO("Higher Speed Profile");
+        ROS_INFO("S6 Speed Profile");
         step_sizes[1] = 0.45/hz;
         step_sizes[2] = 0.45/hz;
+    }else if (std::string(argv[1]) == "s7"){
+        ROS_INFO("S7 Profile");
+        step_sizes[1] = 0.5/hz;
+        step_sizes[2] = 0.5/hz;
+    }else if (std::string(argv[1]) == "s8"){
+        ROS_INFO("S8 Profile");
+        step_sizes[1] = 0.45/hz;
+        step_sizes[2] = 0.45/hz;
+        step_increase[1] =  2.0/pow(hz,2);
+        step_increase[2] =  2.0/pow(hz,2);
+
+    }else if (std::string(argv[1]) == "s9"){
+        ROS_INFO("S9 Profile");
+        step_sizes[1] = 0.5/hz;
+        step_sizes[2] = 0.5/hz;
+        step_increase[1] =  2.0/pow(hz,2);
+        step_increase[2] =  2.0/pow(hz,2);
+
+    }else if (std::string(argv[1]) == "s10"){
+        ROS_INFO("S10 Profile");
+        step_sizes[1] = 0.6/hz;
+        step_sizes[2] = 0.6/hz;
+        step_increase[1] =  2.0/pow(hz,2);
+        step_increase[2] =  2.0/pow(hz,2);
+
     }else{
         ROS_INFO("Error Selecting Speed");
     }

@@ -57,7 +57,7 @@ public:
     //current_position[4] = ((msg.sensor_values[4] - 5) - 800)*M_PI/501.5;
     //current_position[5] = -((msg.sensor_values[5] - 5) - 555)*M_PI/501.5;
 
-    current_position[0] = msg.sensor_values[0]/1000.0;
+    current_position[0] = (msg.sensor_values[0] + 64)/1000.0;
     current_position[1] = (msg.sensor_values[1] - 1618)*2*M_PI/4095;
     current_position[2] = (msg.sensor_values[2] - 2101)*2*M_PI/4095;
     current_position[3] = (msg.sensor_values[3]- 2143)*2*M_PI/4095;
