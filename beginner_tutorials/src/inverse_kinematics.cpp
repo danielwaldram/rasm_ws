@@ -54,8 +54,12 @@ int main(int argc, char** argv){
 	ros::NodeHandle nh;
     // publisher to indicate when the test has started
     ros::Publisher pub = nh.advertise<std_msgs::Int32>("time_stamp", 1000);
+    ros::Publisher traj_pub = nh.advertise<std_msgs::Float64>("traj_shoulder", 1000);
+    ros::Publisher goal_pub = nh.advertise<std_msgs::Float64>("goal_shoulder", 1000);
     std_msgs::Int32 msg;
     msg.data = 1;
+    std_msgs::Float64 traj_data;
+    traj_data.data = 0.0;
 	ros::Subscriber sub;
 	sub = nh.subscribe("joint_states",100, callback_joint_positions);
 	double hz = 300;
@@ -95,6 +99,8 @@ int main(int argc, char** argv){
     //double distance_array[6] {0.01, 0.25, 0.25, 0.15, 0.15, 0.15};
     double step_increase[6] {1.0/pow(hz,2), 1.0/pow(hz,2), 1.0/pow(hz,2), 2.0/pow(hz,2), 0.75/pow(hz,2), 1.0/pow(hz,2)}; // step_size_increasexhzxhz is the acceleration in rad or m/s^2
     double temp_step_size;
+    bool accel = false;
+    bool switch_dir = false;
     ROS_INFO("%s", argv[1]);
     if (std::string(argv[1]) == "s1"){
         ROS_INFO("Slow Speed Profile");
@@ -302,47 +308,32 @@ int main(int argc, char** argv){
 
     while(nh.ok()){
         try{
+            // Find the base to the end effector and camera
             stamped_base_to_eef = tfBuffer.lookupTransform("base_link", "link_r_6", ros::Time(0));
-
             base_to_eef.setRotation(tf2::Quaternion(stamped_base_to_eef.transform.rotation.x,stamped_base_to_eef.transform.rotation.y, stamped_base_to_eef.transform.rotation.z, stamped_base_to_eef.transform.rotation.w));
             base_to_eef.setOrigin(tf2::Vector3(stamped_base_to_eef.transform.translation.x, stamped_base_to_eef.transform.translation.y, stamped_base_to_eef.transform.translation.z));
             base_to_cam = base_to_eef*eef_to_cam;
-
-
             EEF_Origin = base_to_eef.getOrigin();
-            //ROS_INFO("Origin: [%f, %f, %f]\n", EEF_Origin[0], EEF_Origin[1], EEF_Origin[2]);
-            //ROS_INFO("Solution? %i\n", ret);
-            //ROS_INFO("z: %f\n", q(0));
-            //ROS_INFO("shoulder: %f\n", q(1));
-            //ROS_INFO("elbow: %f\n", q(2));
-            //ROS_INFO("yaw: %f\n", q(3));
-            //ROS_INFO("pitch: %f\n", q(4));
-            //ROS_INFO("roll: %f\n", q(5));
+
         }catch(tf2::TransformException &ex){
         }
         try{
+            // Find the base to goal and face transforms
             stamped_base_to_goal = tfBuffer.lookupTransform("base_link", "goal_pose", ros::Time(0));
             stamped_base_to_face = tfBuffer.lookupTransform("base_link", "face_pose", ros::Time(0));
             base_to_face.setRotation(tf2::Quaternion(stamped_base_to_face.transform.rotation.x,stamped_base_to_face.transform.rotation.y, stamped_base_to_face.transform.rotation.z, stamped_base_to_face.transform.rotation.w));
             base_to_face.setOrigin(tf2::Vector3(stamped_base_to_face.transform.translation.x, stamped_base_to_face.transform.translation.y, stamped_base_to_face.transform.translation.z));
+            
+            // Cam to face transform
             cam_to_face_normal = base_to_cam.inverse()*base_to_face;
-            /*
-            tf2::Quaternion quat_cam_to_face;
-            quat_cam_to_face = cam_to_face_normal.getRotation();
-            tf2::Matrix3x3 m_cam_to_face_normal(quat);
-            double cam_to_face_roll, cam_to_face_pitch, cam_to_face_yaw;
-
-            m_cam_to_face_normal.getRPY(cam_to_face_yaw, cam_to_face_pitch, cam_to_face_roll);
-            */
-            // get the vector from the cam to the face
+            // get the vector from the cam to the face: This defines the z-axis of the rotation vector pointing at a user's face
             cam_to_face = cam_to_face_normal.getOrigin();
-            //ROS_INFO("original: [%f, %f, %f]\n", cam_to_face[0], cam_to_face[1], cam_to_face[2]);
             cam_to_face = cam_to_face.normalize();
-            //ROS_INFO("normalized: [%f, %f, %f]\n", cam_to_face[0], cam_to_face[1], cam_to_face[2]);
             tf2::Vector3 z_normal;
             z_normal[0] = -cam_to_face[0];
             z_normal[1] = -cam_to_face[1];
             z_normal[2] = -cam_to_face[2];
+
             tf2::Quaternion quat_cam_to_face;
             quat_cam_to_face = cam_to_face_normal.getRotation();
             tf2::Matrix3x3 cam_to_face_rot;
@@ -367,56 +358,15 @@ int main(int argc, char** argv){
             base_to_normal = base_to_cam*cam_to_normal_trans;
 
 
-
-
-
-
-
-
-
-
-            /*
-
-            // Project onto the zy axis
-            cam_to_face_zy[0] = 0;
-            cam_to_face_zy[1] = cam_to_face[1];
-            cam_to_face_zy[2] = cam_to_face[2];
-            // getting the yaw and the pitch rotations that would be necessary to get from where we are to where we want to be for the camera_dof
-            double cam_to_normal_goal_pitch = std::atan2(-cam_to_face_zy[2], -cam_to_face_zy[1]); // pitch because it is about the x-axis
-            double cam_to_normal_goal_yaw = std::atan2(-cam_to_face[0], -cam_to_face[2]); // yaw because it is about the y-axis
-            double cam_to_normal_goal_roll = std::atan2(-cam_to_face[1], -cam_to_face[0]);
-            // define a new coordinate system rotated relative to the camera
-            tf2::Transform cam_to_normal;
-            tf2::Quaternion quat_cam_to_normal;
-            quat_cam_to_normal.setRPY(0, cam_to_normal_goal_pitch, cam_to_normal_goal_yaw);
-            cam_to_normal.setRotation(quat_cam_to_normal);
-            cam_to_normal.setOrigin(tf2::Vector3(0, 0, 0));
-            tf2::Transform base_to_normal;
-            base_to_normal = base_to_cam*cam_to_normal;
-            tf2::Quaternion quat_base_to_normal;
-            quat_base_to_normal = base_to_normal.getRotation();
-            m.setRotation(quat_base_to_normal);
-            double base_to_normal_roll, base_to_normal_pitch, base_to_normal_yaw;
-            m.getRPY(base_to_normal_roll, base_to_normal_pitch, base_to_normal_yaw);
-            */
-
-
             base_to_goal.setRotation(tf2::Quaternion(stamped_base_to_goal.transform.rotation.x,stamped_base_to_goal.transform.rotation.y, stamped_base_to_goal.transform.rotation.z, stamped_base_to_goal.transform.rotation.w));
             base_to_goal.setOrigin(tf2::Vector3(stamped_base_to_goal.transform.translation.x, stamped_base_to_goal.transform.translation.y, stamped_base_to_goal.transform.translation.z));
-            //EEF_Origin = base_to_goal.getOrigin();
             EEF_Origin = base_to_eef.getOrigin();
-            //ROS_INFO("Origin Goal: [%f, %f, %f]\n", EEF_Origin[0], EEF_Origin[1], EEF_Origin[2]);
-            //ROS_INFO("Solution? %i\n", ret);
-            //ROS_INFO("z: %f\n", q(0));
-            //ROS_INFO("shoulder: %f\n", q(1));
-            //ROS_INFO("elbow: %f\n", q(2));
-            //ROS_INFO("yaw: %f\n", q(3));
-            //ROS_INFO("pitch: %f\n", q(4));
-            //ROS_INFO("roll: %f\n", q(5));
+
+
             EEF_pos_vector[0] = EEF_Origin[0];
             EEF_pos_vector[1] = EEF_Origin[1];
             EEF_pos_vector[2] = EEF_Origin[2];
-            //TEMPORARY!!!!!!!!!!!!quat = base_to_goal.getRotation();
+            
             quat = base_to_normal.getRotation();
             stamped_base_to_normal.header.stamp = ros::Time::now();
             stamped_base_to_normal.transform.rotation.x = quat.x();
@@ -429,13 +379,8 @@ int main(int argc, char** argv){
             tfb.sendTransform(stamped_base_to_normal);
             m.setRotation(quat);
             m.getRPY(roll, pitch, yaw);
-            //ROS_INFO("base_to_normal: [%f, %f, %f]\n",  roll, pitch, yaw);
             KDL::Rotation eef_goal_rotation = KDL::Rotation::RPY(roll, pitch, yaw);
-            //KDL::Rotation eef_goal_rotation = KDL::Rotation::RPY(base_to_normal_roll, base_to_normal_pitch, base_to_normal_yaw);
-            //EEF_Origin = base_to_goal.getOrigin();
-            //EEF_pos_vector[0] = EEF_Origin[0];
-            //EEF_pos_vector[1] = EEF_Origin[1];
-            //EEF_pos_vector[2] = EEF_Origin[2];
+
             KDL::Frame EEF_frame(eef_goal_rotation, EEF_pos_vector);
             // setting the initial joint positions for the ik solver
             q_init(0) = current_joint_positions[0];
@@ -445,7 +390,9 @@ int main(int argc, char** argv){
             q_init(4) = current_joint_positions[4];
             q_init(5) = current_joint_positions[5];
             KDL::JntArray q_first(chain.getNrOfJoints());
+            // Solving the inverse Kinematics for the final 3 joints of the RASM, which correspond to its wrist joints
             int ret = iksolver1.CartToJnt(q_init, EEF_frame, q_first);
+
             // Convert to betwen -2pi and 2pi
             for(int i = 1; i < chain.getNrOfJoints(); i++){
                 int overshoot = q_first(i)/(2*M_PI);
@@ -458,12 +405,16 @@ int main(int argc, char** argv){
                     q_first(i) = q_first(i) - overshoot*2*M_PI;
                 }
             }
-            // If the motion plan didn't fail, then the goal is updated
+
+
+            // If the motion plan didn't fail, then the goal is updated for the wrist joints
             if(ret == 0){
                 q(3) = q_first(3);
                 q(4) = q_first(4);
                 q(5) = q_first(5);
             }
+
+            // Now finding the joint goals for the first 3 joints
             EEF_Origin = base_to_goal.getOrigin();
             EEF_pos_vector[0] = EEF_Origin[0];
             EEF_pos_vector[1] = EEF_Origin[1];
@@ -481,7 +432,7 @@ int main(int argc, char** argv){
                     q_first(i) = q_first(i) - overshoot*2*M_PI;
                 }
             }
-            // If the motion plan didn't fail, then the goal is updated
+            // If the motion plan didn't fail, then the goal is updated for only the first 3 joints
             if(ret == 0 && ret_2 == 0){
                 q(0) = q_first(0);
                 q(1) = q_first(1);
@@ -489,16 +440,21 @@ int main(int argc, char** argv){
             }
 
 
-            //ROS_INFO("q_prev: [%f, %f, %f, %f, %f, %f]\n", q_prev(0), q_prev(1), q_prev(2), q_prev(3), q_prev(4), q_prev(5));
+            // CREATE THE TRAJECTORY FOR THE RASM'S JOINTS
             // Check the position relative to the previous q
+            switch_dir = false;
+            accel = false;
             for(int i = 0; i < chain.getNrOfJoints(); i++){
                 temp_step_size = step_sizes[i];
                 // reset the direction switch position indicator to the current joint position if a switch has been detected
                 if (signbit(q(i) - q_init(i)) != signbit(q_prev(i) - q_init(i))){
                     q_switch_pos(i) = q_init(i);
+                    switch_dir = true;
                     // the trajectory position must also be updated to be the current position
                     q_goal(i) = q_init(i);
                 }
+
+
                 // Checkif the trajectory position is within the distance array value of the joint position at the last switch
                 if (abs(q_goal(i) - q_switch_pos(i)) < distance_array[i]){
                     temp_step_size = step_increase[i] + step_increase[i]*(0.5*pow((1 + 8*abs(q_goal(i) - q_switch_pos(i))/step_increase[i]), 0.5) - 0.5);
@@ -566,41 +522,6 @@ int main(int argc, char** argv){
             //ROS_INFO("q_goal: [%f, %f, %f, %f, %f, %f]\n", q_goal(0), q_goal(1), q_goal(2), q_goal(3), q_goal(4), q_goal(5));
             //ROS_INFO("current_joint_positions: [%f, %f, %f, %f, %f, %f]\n", q_init(0), q_init(1), q_init(2), q_init(3), q_init(4), q_init(5));
             //ROS_INFO("q: [%f, %f, %f, %f, %f, %f]\n", q(0), q(1), q(2), q(3), q(4), q(5));
-            /*
-            // using the step size to scale down movements
-            for(int i =0; i < chain.getNrOfJoints(); i++){
-                if(abs(q(i) - q_init(i)) > step_sizes[i]){
-                    if(q(i) - q_init(i) > step_sizes[i]){
-                        q_goal(i) = q_init(i) + step_sizes[i];
-                    }else if(q(i) - q_init(i) < step_sizes[i]){
-                        q_goal(i) = q_init(i) - step_sizes[i];
-                    }else{
-                        q_goal(i) = q(i);
-                    }
-                }
-                if(abs(q_goal(i) - q_goal_prev(i)) < theta_threshold){
-                    q_goal(i) = q_goal_prev(i);
-                }
-                q_goal_prev(i) = q_goal(i);
-            }
-
-
-            pub_z_1_setpoint.publish(double(q_goal(0)));
-            pub_shoulder_setpoint.publish(double(q_goal(1)));
-            pub_elbow_setpoint.publish(double(q_goal(2)));
-            pub_y_4_setpoint.publish(double(q_goal(3)));
-            pub_p_5_setpoint.publish(double(q_goal(4)));
-            pub_r_6_setpoint.publish(double(q_goal(5)));
-            // publish joint states
-            pub_z_1_state.publish(current_joint_positions[0]);
-            pub_shoulder_state.publish(current_joint_positions[1]);
-            pub_elbow_state.publish(current_joint_positions[2]);
-            pub_y_4_state.publish(current_joint_positions[3]);
-            pub_p_5_state.publish(current_joint_positions[4]);
-            pub_r_6_state.publish(current_joint_positions[5]);
-            //ROS_INFO("current_joint_positions: [%f, %f, %f, %f, %f, %f]\n", q_init(0), q_init(1), q_init(2), q_init(3), q_init(4), q_init(5));
-            //ROS_INFO("q: [%f, %f, %f, %f, %f, %f]\n", q(0), q(1), q(2), q(3), q(4), q(5));
-            */
 
         }catch(tf2::TransformException &ex){
         }
@@ -618,14 +539,14 @@ int main(int argc, char** argv){
         pub_y_4_setpoint.publish(double(q_goal(3)));
         pub_p_5_setpoint.publish(double(q_goal(4)));
         pub_r_6_setpoint.publish(double(q_goal(5)));
-        /*
-        pub_z_1_setpoint.publish(current_joint_positions[0]);
-        pub_shoulder_setpoint.publish(current_joint_positions[1]);
-        pub_elbow_setpoint.publish(current_joint_positions[2]);
-        pub_y_4_setpoint.publish(current_joint_positions[3]);
-        pub_p_5_setpoint.publish(current_joint_positions[4]);
-        pub_r_6_setpoint.publish(current_joint_positions[5]);
-        */
+
+        // publishing the trajectory data for the shoulder so it can be evaluated
+        traj_data.data = q_goal(1);
+        traj_pub.publish(traj_data);
+        traj_data.data = q(1);
+        goal_pub.publish(traj_data);
+
+
         rate.sleep();
         ros::spinOnce();
     }

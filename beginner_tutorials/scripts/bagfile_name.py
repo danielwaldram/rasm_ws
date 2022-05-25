@@ -14,7 +14,7 @@ import time
 
 #SET FILE PATH FOR SPECIFIC STUDY SUBJECT
 home = expanduser("~")
-file_path = home + "/bagfiles/user_study/3.4.22_prt2/"
+file_path = home + "/bagfiles/user_study/3.26.22/"
 files = os.listdir(file_path)
 bag_name = sys.argv[1]
 print(bag_name)

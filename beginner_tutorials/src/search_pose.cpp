@@ -94,11 +94,11 @@ int main(int argc, char** argv){
     KDL::JntArray q_prev(chain.getNrOfJoints());
     KDL::JntArray q_goal(chain.getNrOfJoints());
     KDL::JntArray q_search(chain.getNrOfJoints()); // joint array for the search pose
-    q_search(0) = 0.1;      // prismatic
+    q_search(0) = 0.1;// 0.19;     // prismatic
     q_search(1) = 1.4868;    // shoulder (prev: 1.309)
     q_search(2) = -2.4795;   // elbow (prev: -2.164)
     q_search(3) = -0.6873912129674569;    // yaw(prev: -0.94)
-    q_search(4) = -1.5708;  // pitch
+    q_search(4) = -1.5708; //-1.38; // pitch
     q_search(5) = 0;        // roll
     bool looking_for_pos = true;
 
