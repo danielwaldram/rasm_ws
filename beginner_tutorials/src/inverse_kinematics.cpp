@@ -20,6 +20,7 @@
 #include <sensor_msgs/JointState.h>
 #include "std_msgs/Float64.h"
 #include "std_msgs/Int32.h"
+#include <algorithm>
 
 
 double current_joint_positions[6] = {0, 0, 0, 0, 0, 0};
@@ -96,11 +97,13 @@ int main(int argc, char** argv){
     double roll, pitch, yaw;
     double step_sizes[6] {0.1/hz, 0/hz, 0/hz, 2.5/hz, 1.0/hz, 0.5/hz}; //{0.03, 0.065, 0.07, 0.085, 0.05, 0.06}; // step size x hz is the velocity in rad or m/s
     double scaled_step_sizes[6] {0, 0, 0, 0, 0, 0};
+    double temp_step_size_prev[6] {0, 0, 0, 0, 0, 0};
     //double distance_array[6] {0.01, 0.25, 0.25, 0.15, 0.15, 0.15};
     double step_increase[6] {1.0/pow(hz,2), 1.0/pow(hz,2), 1.0/pow(hz,2), 2.0/pow(hz,2), 0.75/pow(hz,2), 1.0/pow(hz,2)}; // step_size_increasexhzxhz is the acceleration in rad or m/s^2
     double temp_step_size;
     bool accel = false;
     bool switch_dir = false;
+    bool deccel = false;
     ROS_INFO("%s", argv[1]);
     if (std::string(argv[1]) == "s1"){
         ROS_INFO("Slow Speed Profile");
@@ -193,6 +196,7 @@ int main(int argc, char** argv){
     KDL::JntArray q_init(chain.getNrOfJoints());
     KDL::JntArray q_current(chain.getNrOfJoints());
     KDL::JntArray q_goal(chain.getNrOfJoints());
+    KDL::JntArray q_traj_prev(chain.getNrOfJoints());
     KDL::JntArray q_goal_prev(chain.getNrOfJoints());    // previous goal that was planned to where the goal has been scaled to a certian step size
     KDL::JntArray q_switch_pos(chain.getNrOfJoints());
 
@@ -268,6 +272,12 @@ int main(int argc, char** argv){
             q_prev(3) = current_joint_positions[3];
             q_prev(4) = current_joint_positions[4];
             q_prev(5) = current_joint_positions[5];
+            q_traj_prev(0) = current_joint_positions[0];
+            q_traj_prev(1) = current_joint_positions[1];
+            q_traj_prev(2) = current_joint_positions[2];
+            q_traj_prev(3) = current_joint_positions[3];
+            q_traj_prev(4) = current_joint_positions[4];
+            q_traj_prev(5) = current_joint_positions[5];
             q_switch_pos(0) = current_joint_positions[0];
             q_switch_pos(1) = current_joint_positions[1];
             q_switch_pos(2) = current_joint_positions[2];
@@ -448,30 +458,52 @@ int main(int argc, char** argv){
                 temp_step_size = step_sizes[i];
                 // reset the direction switch position indicator to the current joint position if a switch has been detected
                 if (signbit(q(i) - q_init(i)) != signbit(q_prev(i) - q_init(i))){
-                    q_switch_pos(i) = q_init(i);
+                    //COMMENT OUT BELOW
+                    //q_switch_pos(i) = q_init(i);
+                    q_switch_pos(i) = q_traj_prev(i);
                     switch_dir = true;
                     // the trajectory position must also be updated to be the current position
-                    q_goal(i) = q_init(i);
+                    //COMMENT OUT BELOW
+                    //q_goal(i) = q_init(i);
                 }
 
+                // Check if we have a new goal in the same direction
+                if (switch_dir == false && q_prev(i)!= q(i)){
+                    // if the previous trajectory was in the decceleration region a new switch position will need to be defined so that there is a smooth transition
+                    //      from one decelleration to acceleration
+                    if (deccel == true){
+                        float new_switch_dist = (pow(2*(temp_step_size_prev[i] - step_increase[i])/step_increase[i] + 1,2) - 1)*step_increase[i]/8;
+                        // if traj_prev is greater then we are headed in the positive direction so traj_switch should be less
+                        if(q_traj_prev(i) > q_switch_pos(i)){
+                            q_switch_pos(i) = q_traj_prev(i) - new_switch_dist;
+                        }else{
+                            q_switch_pos(i) = q_traj_prev(i) + new_switch_dist;
+                        }
+                    }
+                }
+
+                deccel = false;
 
                 // Checkif the trajectory position is within the distance array value of the joint position at the last switch
                 if (abs(q_goal(i) - q_switch_pos(i)) < distance_array[i]){
                     temp_step_size = step_increase[i] + step_increase[i]*(0.5*pow((1 + 8*abs(q_goal(i) - q_switch_pos(i))/step_increase[i]), 0.5) - 0.5);
+                    accel == true;
                     if(i == 2){
                         //ROS_INFO("step_size: %f\n", step_sizes[i]);
                         ROS_INFO("accel seperation: %f\n", abs(q_goal(i) - q_switch_pos(i)));
-
-
                     }
                 }
-
                 // Check if the goal is within the deceleration distance of the trajectory position
                 if(abs(q(i) - q_goal(i)) < distance_array[i]){
                     temp_step_size = step_increase[i] + step_increase[i]*(0.5*pow((1 + 8*abs(q(i) - q_goal(i))/step_increase[i]), 0.5) - 0.5);
+                    deccel = true;
                     //temp_step_size = step_sizes[i]*abs(q(i) - q_init(i))/distance_array[i];
                     ROS_INFO("decel seperation: %f\n", abs(q(i) - q_goal(i)));
                 }
+                if(deccel == true && accel == true){
+                    temp_step_size = std::min(step_increase[i] + step_increase[i]*(0.5*pow((1 + 8*abs(q(i) - q_goal(i))/step_increase[i]), 0.5) - 0.5), step_increase[i] + step_increase[i]*(0.5*pow((1 + 8*abs(q_goal(i) - q_switch_pos(i))/step_increase[i]), 0.5) - 0.5));
+                }
+
                 // adjust the temp_step_size to be no higher than the step size
                 if(temp_step_size > step_sizes[i]){
                     temp_step_size = step_sizes[i];
@@ -479,6 +511,7 @@ int main(int argc, char** argv){
                 ROS_INFO("step_size: %f\n", step_sizes[i]);
                 ROS_INFO("temp_size: %f\n", temp_step_size);
                 ROS_INFO("--------------");
+
 
                 // Check if the goal is in the same direction relative to the current position
                 if(signbit(q(i) - q_init(i)) == signbit(q_prev(i) - q_init(i))){
@@ -518,6 +551,7 @@ int main(int argc, char** argv){
 
                 // update the previous goal to be equal to the current goal for the next loop of fun
                 q_prev(i) = q(i);
+                q_traj_prev(i) = q_goal(i);
             }
             //ROS_INFO("q_goal: [%f, %f, %f, %f, %f, %f]\n", q_goal(0), q_goal(1), q_goal(2), q_goal(3), q_goal(4), q_goal(5));
             //ROS_INFO("current_joint_positions: [%f, %f, %f, %f, %f, %f]\n", q_init(0), q_init(1), q_init(2), q_init(3), q_init(4), q_init(5));
